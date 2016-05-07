@@ -21,7 +21,7 @@ enum class Block
     Color5,
 };
 
-Block BlockFromChar(char ch)
+inline Block BlockFromChar(char ch)
 {
     if (ch == '.')
         return Block::Empty;
@@ -29,12 +29,27 @@ Block BlockFromChar(char ch)
         return (Block)(ch - '0');
 }
 
-char CharFromBlock(Block block)
+inline char CharFromBlock(Block block)
 {
     if (block == Block::Empty)
         return '.';
     else
         return (char)((int)'0' + (int)block);
+}
+
+inline bool IsEmpty(Block block)
+{
+    return block == Block::Empty;
+}
+
+inline bool IsSkull(Block block)
+{
+    return block == Block::Skull;
+}
+
+inline bool IsColor(Block block)
+{
+    return block != Block::Empty && block != Block::Skull;
 }
 
 
@@ -50,10 +65,68 @@ public:
             row.fill(Block::Empty);
     }
 
+    /// Allows direct read access to grid.
     const array<Block, COLS>& operator[](size_t idx) const { assert(idx < ROWS); return m_Grid[idx]; }
 
-    size_t GetRows() const { return ROWS; }
-    size_t GetCols() const { return COLS; }
+    /// Gets value of specified grid cell.
+    /** If row or col is outside bounds then returns Block::Empty. */
+    Block Get(size_t row, size_t col) const
+    {
+        if (row >= ROWS || col >= COLS)
+            return Block::Empty;
+
+        return m_Grid[row][col];
+    }
+
+    template <typename FUNC>
+    void for_each_row_and_col(FUNC fun) const
+    {
+        for (size_t row = 0; row < ROWS; ++row)
+            for (size_t col = 0; col < COLS; ++col)
+                fun(row, col);
+    }
+
+    size_t GetNumRows() const { return ROWS; }
+    size_t GetNumCols() const { return COLS; }
+
+    /// Adds new block to grid.
+    /** @return false if failed column is full. */
+    bool AddBlock(size_t col, Block color)
+    {
+        if (col >= COLS)
+            return false;
+
+        for (size_t row = 0; row < ROWS; ++row)
+        {
+            if (m_Grid[row][col] == Block::Empty)
+            {
+                m_Grid[row][col] = color;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// Calculates current grid rate.
+    /** This is custom method of rating grid. */
+    int CalculateRate() const
+    {
+        int rate = 0;
+        for_each_row_and_col([&](size_t row, size_t col)
+        {
+            Block block = Get(row, col);
+            if (!IsColor(block))
+                return;
+
+            if (Get(row + 1, col) == block)
+                ++rate;
+            if (Get(row, col + 1) == block)
+                ++rate;
+        });
+
+        return rate;
+    }
 
     void Read(istream& in)
     {
@@ -90,81 +163,6 @@ private:
     matrix<Block, ROWS, COLS> m_Grid;
 };
 
-int first_highest_column_with_color(const Grid& grid, Block color)
-{
-    int column = -1;
-    int height = -1;
-
-    for (int j = 0; j < Grid::COLS; ++j)
-    {
-        for (int i = Grid::ROWS - 1; i >= 0; --i)
-        {
-            if (grid[i][j] == color)
-            {
-                if (i > height)
-                {
-                    height = i;
-                    column = j;
-                }
-                break;
-            }
-        }
-    }
-    return column;
-}
-
-
-int first_column_with_color(int(&myGrid)[12][6], int color)
-{
-    for (int j = 0; j < 6; ++j)
-    {
-        for (int i = 11; i >= 0; --i)
-        {
-            if (myGrid[i][j] == color)
-                return j;
-        }
-    }
-    return -1;
-}
-
-int last_column_with_color(int(&myGrid)[12][6], int color)
-{
-    for (int j = 5; j >= 0; --j)
-    {
-        for (int i = 11; i >= 0; --i)
-        {
-            if (myGrid[i][j] == color)
-                return j;
-        }
-    }
-    return -1;
-}
-
-
-int first_lowest_column(const Grid& grid)
-{
-    int column = 0;
-    int height = 12;
-
-    for (int j = 0; j < Grid::COLS; ++j)
-    {
-        for (int i = 0; i < Grid::ROWS; ++i)
-        {
-            if (grid[i][j] == Block::Empty)
-            {
-                if (i < height)
-                {
-                    height = i;
-                    column = j;
-                }
-                break;
-            }
-        }
-    }
-
-    return column;
-}
-
 
 /**
 * Auto-generated code below aims at helping you parse
@@ -190,18 +188,62 @@ int main()
         }
 
         MyGrid.Read(cin);
-        MyGrid.Print(cerr);
+        //MyGrid.Print(cerr);
 
         OtherGrid.Read(cin);
         //OtherGrid.Print(cerr);
 
-        int col = first_highest_column_with_color(MyGrid, colorsA[0]);
-        cerr << col << endl;
-        if (col == -1)
-            col = first_lowest_column(MyGrid);
-        else if (col >= 0 && col < 5)
-            col += 1;
+        static const size_t ROTS = 4;
+        int values[Grid::COLS * ROTS] = { 0 };
 
-        cout << char((int)'0' + col) << " 3" << endl; // "x": the column in which to drop your blocks
+        for (size_t col = 0; col < Grid::COLS; ++col)
+        {
+            for (size_t rot = 0; rot < ROTS; ++rot)
+            {
+                Grid CalcGrid = MyGrid;
+
+                int& val = values[col * ROTS + rot];
+                val = numeric_limits<int>::min();
+
+                if (rot == 0)
+                {
+                    if (!CalcGrid.AddBlock(col, colorsA[0]))
+                        break;
+                    if (!CalcGrid.AddBlock(col + 1, colorsB[0]))
+                        break;
+                }
+                else if (rot == 1)
+                {
+                    if (!CalcGrid.AddBlock(col, colorsA[0]))
+                        break;
+                    if (!CalcGrid.AddBlock(col, colorsB[0]))
+                        break;
+                }
+                else if (rot == 2)
+                {
+                    if (!CalcGrid.AddBlock(col - 1, colorsB[0]))
+                        break;
+                    if (!CalcGrid.AddBlock(col, colorsA[0]))
+                        break;
+                }
+                else //if (rot == 3)
+                {
+                    if (!CalcGrid.AddBlock(col, colorsB[0]))
+                        break;
+                    if (!CalcGrid.AddBlock(col, colorsA[0]))
+                        break;
+                }
+
+                val = CalcGrid.CalculateRate();
+            }
+        }
+
+        auto min_it = max_element(begin(values), end(values));
+        size_t min_idx = distance(begin(values), min_it);
+
+        int col = min_idx / ROTS;
+        int rot = min_idx % ROTS;
+
+        cout << col << ' ' << rot << endl; // "x": the column in which to drop your blocks
     }
 }
