@@ -7,6 +7,12 @@
 
 using namespace std;
 
+template <typename T, std::size_t N>
+constexpr std::size_t countof(T const (&)[N]) noexcept
+{
+    return N;
+}
+
 template <class T, size_t ROW, size_t COL>
 using matrix = array<array<T, COL>, ROW>;
 
@@ -19,6 +25,7 @@ enum class Block
     Color3,
     Color4,
     Color5,
+    Count,
 };
 
 inline Block BlockFromChar(char ch)
@@ -49,9 +56,20 @@ inline bool IsSkull(Block block)
 
 inline bool IsColor(Block block)
 {
-    return block != Block::Empty && block != Block::Skull;
+    return block != Block::Empty && block != Block::Skull && block != Block::Count;
 }
 
+inline int GetGroupBonus(int group)
+{
+    if (group <= 4)
+        return 0;
+
+    if (group <= 10)
+        return group - 4;
+
+    return 8;
+
+}
 
 class Grid
 {
@@ -76,6 +94,22 @@ public:
             return Block::Empty;
 
         return m_Grid[row][col];
+    }
+    /// Sets value of specific grid cell.
+    void Set(size_t row, size_t col, Block block)
+    {
+        if (row >= ROWS || col >= COLS)
+            return;
+
+        m_Grid[row][col] = block;
+    }
+    /// Clears vale of specific grid cell.
+    void Clear(size_t row, size_t col)
+    {
+        if (row >= ROWS || col >= COLS)
+            return;
+
+        m_Grid[row][col] = Block::Empty;
     }
 
     template <typename FUNC>
@@ -133,6 +167,82 @@ public:
 
         return rate;
     }
+    
+    /// Simulates next move and calculates score.
+    int Simulate()
+    {
+        int blocks_count = 0;
+        int chain_power = 0;
+        int group_bonus = 0;
+        bool colors[(size_t)Block::Count] = { false };
+
+        do
+        {
+            const int prev_blocks_count = blocks_count;
+
+            for_each_row_and_col([&](size_t row, size_t col)
+            {
+                if (!IsAtLeastForColorBlocks(row, col))
+                    return;
+
+                colors[(size_t)Get(row, col)] = true;
+
+                int blocks = ClearBlocks(row, col);
+
+                blocks_count += blocks;
+                group_bonus += GetGroupBonus(blocks);
+            });
+
+            if (blocks_count != prev_blocks_count)
+            {
+                chain_power = max(chain_power * 2, 8);
+                continue;
+            }
+
+        } while (false);
+
+        if (blocks_count)
+            return 0;
+
+        int color_bonus = 0;
+        for (size_t i = 0; i < countof(colors); ++i)
+        {
+            if (colors[i])
+                ++color_bonus;
+        }
+
+        return (10 * blocks_count) * max(chain_power + color_bonus + group_bonus, 0);
+    }
+
+    bool IsAtLeastForColorBlocks(size_t row, size_t col) const
+    {
+        Block block = Get(row, col);
+        if (!IsColor(block))
+            return false;
+
+        int group = 1;
+
+        int shiftA[4][2] = { { 1, 1 }, { 1, -1}, { -1, 1 }, { -1, -1} };
+        int shiftB[4][2] = { { 1, 0 }, { -1, 0}, { 0, 1 }, { 0, -1} };
+
+        for (size_t i = 0; i < 4; ++i)
+        {
+            if (Get(row + shiftA[i][0], col + shiftA[i][1]) == block &&
+                (Get(row + shiftA[i][0], col) == block || Get(row, col + shiftA[i][1]) == block))
+            {
+                ++group;
+            }
+
+            if (Get(row + shiftB[i][0], col + shiftB[i][1]) == block)
+            {
+                ++group;
+                if (Get(row + shiftB[i][0] * 2, col + shiftB[i][1] * 2) == block)
+                    ++group;
+            }
+        }
+
+        return group >= 4;
+    }
 
     void Read(istream& in)
     {
@@ -158,6 +268,26 @@ public:
     }
 
 private:
+    int ClearBlocks(size_t row, size_t col)
+    {
+        int cleared_blocks = 1;
+
+        Block block = Get(row, col);
+        Clear(row, col);
+
+        int shift[4][2] = { { 1, 0 },{ -1, 0 },{ 0, 1 },{ 0, -1 } };
+
+        for (size_t i = 0; i < 4; ++i)
+        {
+            if (Get(row + shift[i][0], col + shift[i][1]) == block)
+                cleared_blocks += ClearBlocks(row + shift[i][0], col + shift[i][1]);
+            else if (Get(row + shift[i][0], col + shift[i][1]) == Block::Skull)
+                Clear(row + shift[i][0], col + shift[i][1]);
+        }
+
+        return cleared_blocks;
+    }
+
     void ReadRow(size_t row, const string& line)
     {
         assert(row < ROWS);
@@ -234,7 +364,7 @@ int main()
                 }
 
                 if (added)
-                    val = CalcGrid.CalculateRate();
+                    val = CalcGrid.CalculateRate() + CalcGrid.Simulate() * numeric_limits<short>::max();
             }
         }
 
