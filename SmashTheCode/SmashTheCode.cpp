@@ -79,11 +79,11 @@ public:
     }
 
     template <typename FUNC>
-    void for_each_row_and_col(FUNC fun) const
+    void for_each_row_and_col(FUNC func) const
     {
         for (size_t row = 0; row < ROWS; ++row)
             for (size_t col = 0; col < COLS; ++col)
-                fun(row, col);
+                func(row, col);
     }
 
     size_t GetNumRows() const { return ROWS; }
@@ -116,13 +116,21 @@ public:
         for_each_row_and_col([&](size_t row, size_t col)
         {
             Block block = Get(row, col);
-            if (!IsColor(block))
-                return;
 
-            if (Get(row + 1, col) == block)
-                ++rate;
-            if (Get(row, col + 1) == block)
-                ++rate;
+            if (IsEmpty(block))
+                rate += row;
+
+            if (IsColor(block))
+            {
+                static const int MUL = 4;
+
+                if (Get(row + 1, col) == block)
+                    rate += (ROWS - row - 1) * MUL;
+                if (Get(row, col + 1) == block)
+                    rate += (ROWS - row) * MUL;
+                if (Get(row + 1, col + 1) == block)
+                    rate += (ROWS - row - 1) * MUL;
+            }
         });
 
         return rate;
