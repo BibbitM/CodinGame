@@ -118,18 +118,16 @@ public:
             Block block = Get(row, col);
 
             if (IsEmpty(block))
-                rate += row;
+                rate += (ROWS - row);
 
             if (IsColor(block))
             {
-                static const int MUL = 4;
+                static const int MUL = ROWS*ROWS;
 
                 if (Get(row + 1, col) == block)
-                    rate += (ROWS - row - 1) * MUL;
+                    rate += 1 * MUL;
                 if (Get(row, col + 1) == block)
-                    rate += (ROWS - row) * MUL;
-                if (Get(row + 1, col + 1) == block)
-                    rate += (ROWS - row - 1) * MUL;
+                    rate += 1 * MUL;
             }
         });
 
@@ -213,36 +211,30 @@ int main()
                 int& val = values[col * ROTS + rot];
                 val = numeric_limits<int>::min();
 
+                bool added = false;
                 if (rot == 0)
                 {
-                    if (!CalcGrid.AddBlock(col, colorsA[0]))
-                        break;
-                    if (!CalcGrid.AddBlock(col + 1, colorsB[0]))
-                        break;
+                    added = CalcGrid.AddBlock(col, colorsA[0]) &&
+                            CalcGrid.AddBlock(col + 1, colorsB[0]);
                 }
                 else if (rot == 1)
                 {
-                    if (!CalcGrid.AddBlock(col, colorsA[0]))
-                        break;
-                    if (!CalcGrid.AddBlock(col, colorsB[0]))
-                        break;
+                    added = CalcGrid.AddBlock(col, colorsA[0]) &&
+                            CalcGrid.AddBlock(col, colorsB[0]);
                 }
                 else if (rot == 2)
                 {
-                    if (!CalcGrid.AddBlock(col - 1, colorsB[0]))
-                        break;
-                    if (!CalcGrid.AddBlock(col, colorsA[0]))
-                        break;
+                    added = CalcGrid.AddBlock(col - 1, colorsB[0]) &&
+                            CalcGrid.AddBlock(col, colorsA[0]);
                 }
                 else //if (rot == 3)
                 {
-                    if (!CalcGrid.AddBlock(col, colorsB[0]))
-                        break;
-                    if (!CalcGrid.AddBlock(col, colorsA[0]))
-                        break;
+                    added = CalcGrid.AddBlock(col, colorsB[0]) &&
+                            CalcGrid.AddBlock(col, colorsA[0]);
                 }
 
-                val = CalcGrid.CalculateRate();
+                if (added)
+                    val = CalcGrid.CalculateRate();
             }
         }
 
