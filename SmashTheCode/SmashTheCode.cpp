@@ -158,22 +158,21 @@ public:
     size_t GetNumCols() const { return COLS; }
 
     /// Adds new block to grid.
-    /** @return false if failed column is full. */
-    bool AddBlock(size_t col, Block color)
+    size_t AddBlock(size_t col, Block color)
     {
         if (col >= COLS)
-            return false;
+            return (size_t)-1;
 
         for (size_t row = 0; row < ROWS; ++row)
         {
             if (m_Grid[row][col] == Block::Empty)
             {
                 m_Grid[row][col] = color;
-                return true;
+                return row;
             }
         }
 
-        return false;
+        return (size_t)-1;
     }
 
     size_t CalculateBlocksNumber(Block block) const
@@ -345,20 +344,26 @@ public:
     }
     
     /// Simulates next move and calculates score.
-    int Simulate(/*size_t row1, size_t col1, size_t row2, size_t col2*/)
+    int Simulate(size_t row1, size_t col1, size_t row2, size_t col2)
     {
         int blocks_count = 0;
         int chain_power = -1;
         int group_bonus = 0;
         bool colors[(size_t)Block::Count] = { false };
 
+        size_t min_row = (size_t)max<ptrdiff_t>(0, min<ptrdiff_t>(row1, row2) - 2);
+        size_t max_row = min((size_t)ROWS, max(row1, row2) + 3);
+
+        size_t min_col = (size_t)max<ptrdiff_t>(0, min<ptrdiff_t>(col1, col2) - 2);
+        size_t max_col = min((size_t)COLS, max(col1, col1) + 3);
+
         do
         {
             const int prev_blocks_count = blocks_count;
 
             //for_each_row_and_col([&](size_t row, size_t col)
-            for (size_t row = 0; row < ROWS; ++row)
-                for (size_t col = 0; col < COLS; ++col)
+            for (size_t row = min_row; row < max_row; ++row)
+                for (size_t col = min_col; col < max_col; ++col)
             {
                 if (IsAtLeastFourColorBlocks(row, col))
                 {
@@ -370,6 +375,12 @@ public:
                     group_bonus += GetGroupBonus(blocks);
                 }
             }//);
+
+            min_row = 0;
+            max_row = ROWS;
+
+            min_col = 0;
+            max_col = COLS;
 
             if (blocks_count != prev_blocks_count)
             {
@@ -529,28 +540,38 @@ int CalculateBestMove(const Grid& grid, Block(&colorsA)[MOVES], Block(&colorsB)[
     return *max_element(begin(values), end(values));
 }
 
-inline bool AddBlocksToGrid(Grid& calc_grid, size_t col, size_t rot, Block(&colorsA)[MOVES], Block(&colorsB)[MOVES], int deep)
+inline bool AddBlocksToGrid(Grid& calc_grid, size_t col, size_t rot, Block(&colorsA)[MOVES], Block(&colorsB)[MOVES], int deep, size_t& row1, size_t& col1, size_t& row2, size_t& col2)
 {
     if (rot == 0)
     {
-        return calc_grid.AddBlock(col, colorsA[deep]) &&
-               calc_grid.AddBlock(col + 1, colorsB[deep]);
+        col1 = col;
+        col2 = col + 1;
+        row1 = calc_grid.AddBlock(col, colorsA[deep]);
+        row2 = calc_grid.AddBlock(col + 1, colorsB[deep]);
     }
     else if (rot == 1)
     {
-        return calc_grid.AddBlock(col, colorsA[deep]) &&
-               calc_grid.AddBlock(col, colorsB[deep]);
+        col1 = col;
+        col2 = col;
+        row1 = calc_grid.AddBlock(col, colorsA[deep]);
+        row2 = calc_grid.AddBlock(col, colorsB[deep]);
     }
     else if (rot == 2)
     {
-        return calc_grid.AddBlock(col - 1, colorsB[deep]) &&
-               calc_grid.AddBlock(col, colorsA[deep]);
+        col1 = col - 1;
+        col2 = col;
+        row1 = calc_grid.AddBlock(col - 1, colorsB[deep]);
+        row2 = calc_grid.AddBlock(col, colorsA[deep]);
     }
     else //if (rot == 3)
     {
-        return calc_grid.AddBlock(col, colorsB[deep]) &&
-               calc_grid.AddBlock(col, colorsA[deep]);
+        col1 = col;
+        col2 = col;
+        row1 = calc_grid.AddBlock(col, colorsB[deep]);
+        row2 = calc_grid.AddBlock(col, colorsA[deep]);
     }
+
+    return row1 != (size_t)-1 && row2 != (size_t)-1;
 }
 
 int CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOVES], Block(&colorsB)[MOVES], int deep, int max_deep, int deep_bonus)
@@ -559,12 +580,13 @@ int CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOVE
 
     int val = numeric_limits<int>::min();
 
-    bool added = AddBlocksToGrid(calc_grid, col, rot, colorsA, colorsB, deep);
+    size_t row1, col1, row2, col2;
+    bool added = AddBlocksToGrid(calc_grid, col, rot, colorsA, colorsB, deep, row1, col1, row2, col2);
 
     if (added)
     {
         int rate = calc_grid.CalculateRate();
-        int score = calc_grid.Simulate();
+        int score = calc_grid.Simulate(row1, col1, row2, col2);
         val = rate + (score + (score ? (/*MOVES - */deep) * deep_bonus : 0)) * numeric_limits<short>::max();
 
         if (deep < max_deep)//MOVES)
@@ -604,11 +626,12 @@ int CalculateScore(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOV
 
     int val = numeric_limits<int>::min();
 
-    bool added = AddBlocksToGrid(calc_grid, col, rot, colorsA, colorsB, 0);
+    size_t row1, col1, row2, col2;
+    bool added = AddBlocksToGrid(calc_grid, col, rot, colorsA, colorsB, 0, row1, col1, row2, col2);
 
     if (added)
     {
-        val = calc_grid.Simulate();
+        val = calc_grid.Simulate(row1, col1, row2, col2);
     }
 
     return val;
