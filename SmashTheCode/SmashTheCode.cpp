@@ -194,6 +194,8 @@ public:
     /** This is custom method of rating grid. */
     int CalculateRate() const
     {
+        static const int MUL = ROWS*ROWS;
+
         int rate = 0;
 
         size_t prev = 0;
@@ -205,7 +207,7 @@ public:
             curr = next;
             next = GetHeight(row + 1);
 
-            static const int HEIGHT_DIFF_BONUS = 32 * ROWS*ROWS;
+            static const int HEIGHT_DIFF_BONUS = 32 * MUL;
 
             if (curr - prev >= 2 && curr - prev <= 3)
                 rate += HEIGHT_DIFF_BONUS;
@@ -223,12 +225,12 @@ public:
         {
             Block block = Get(row, col);
 
-            if (IsEmpty(block))
-                rate += (ROWS - row);
+            //if (IsEmpty(block))
+            //    rate += 64/*(ROWS - row)*/ * MUL;
 
             if (IsSkull(block))
             {
-                static const int MUL = ROWS*ROWS;
+                //rate -= MUL;
 
                 if (IsColor(Get(row + 1, col)))
                     rate += MUL;
@@ -242,8 +244,6 @@ public:
 
             if (IsColor(block))
             {
-                static const int MUL = ROWS*ROWS;
-
                 // .
                 // .
                 // x  x..
@@ -274,16 +274,16 @@ public:
                 // x      x  ..    ..
                 if (Get(row + 1, col + 1) == block &&
                     Get(row + 1, col + 2) == block)
-                    rate += 16 * MUL;
+                    rate += 32 * MUL;
                 if (Get(row + 1, col - 1) == block &&
                     Get(row + 1, col - 2) == block)
-                    rate += 16 * MUL;
+                    rate += 32 * MUL;
                 if (Get(row - 1, col - 1) == block &&
                     Get(row - 1, col - 2) == block)
-                    rate += 16 * MUL;
+                    rate += 32 * MUL;
                 if (Get(row - 1, col + 1) == block &&
                     Get(row - 1, col + 2) == block)
-                    rate += 16 * MUL;
+                    rate += 32 * MUL;
 
                 // ..  ..   x  x
                 // x    x  ..  ..
@@ -336,6 +336,32 @@ public:
                 if (Get(row, col + 1) == block)
                     rate += 1 * MUL;
                 if (Get(row + 1, col) == block)
+                    rate += 128 * MUL;
+
+                // .
+                // .
+                //
+                // x
+                if (Get(row + 1, col) != block &&
+                    Get(row + 2, col) == block &&
+                    Get(row + 3, col) == block)
+                    rate += 128 * MUL;
+
+                // .
+                // +
+                // +
+                // x
+                if (Get(row + 1, col) != block &&
+                    IsColor(Get(row + 1, col)) &&
+                    Get(row + 2, col) == Get(row + 1, col) &&
+                    Get(row + 3, col) == block)
+                    rate += 128 * MUL;
+
+                // .
+                // s
+                // x
+                if (IsSkull(Get(row + 1, col)) &&
+                    Get(row + 3, col) == block)
                     rate += 128 * MUL;
             }
         }//);
@@ -743,10 +769,10 @@ int main()
             max_deep = 1;
 
         size_t skulls_num = MyGrid.CalculateBlocksNumber(Block::Skull);
-        if (skulls_num >= 6 * 4)
+        if (skulls_num >= 6 * 2)
             deep_bonus = 0;
-        size_t empty_num = MyGrid.CalculateBlocksNumber(Block::Skull);;
-        if (empty_num <= 6 * 3)
+        size_t empty_num = MyGrid.CalculateBlocksNumber(Block::Empty);;
+        if (empty_num <= 6 * 2)
             deep_bonus = 0;
 
         size_t best_idx = FindBestMove(MyGrid, colorsA, colorsB, max_deep, deep_bonus);
