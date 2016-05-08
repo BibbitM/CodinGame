@@ -249,10 +249,10 @@ public:
                 // x  x..
                 if (Get(row + 1, col + 0) == block &&
                     Get(row + 2, col + 0) == block)
-                    rate += 32 * MUL;
+                    rate += 256 * MUL;
                 if (Get(row + 0, col + 1) == block &&
                     Get(row + 0, col + 2) == block)
-                    rate += 32 * MUL;
+                    rate += 256 * MUL;
 
                 //  .  .    .  .
                 //  .  .   .    .
@@ -336,7 +336,7 @@ public:
                 if (Get(row, col + 1) == block)
                     rate += 1 * MUL;
                 if (Get(row + 1, col) == block)
-                    rate += 128 * MUL;
+                    rate += 256 * MUL;
 
                 // .
                 // .
@@ -345,7 +345,7 @@ public:
                 if (Get(row + 1, col) != block &&
                     Get(row + 2, col) == block &&
                     Get(row + 3, col) == block)
-                    rate += 128 * MUL;
+                    rate += 256 * MUL;
 
                 // .
                 // +
@@ -355,14 +355,14 @@ public:
                     IsColor(Get(row + 1, col)) &&
                     Get(row + 2, col) == Get(row + 1, col) &&
                     Get(row + 3, col) == block)
-                    rate += 64 * MUL;
+                    rate += 128 * MUL;
 
                 // .
                 // s
                 // x
                 if (IsSkull(Get(row + 1, col)) &&
                     Get(row + 3, col) == block)
-                    rate += 64 * MUL;
+                    rate += 128 * MUL;
             }
         }//);
 
