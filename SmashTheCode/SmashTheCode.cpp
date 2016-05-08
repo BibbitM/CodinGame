@@ -372,10 +372,9 @@ public:
     /// Simulates next move and calculates score.
     int Simulate(size_t row1, size_t col1, size_t row2, size_t col2)
     {
-        int blocks_count = 0;
+        int score = 0;
+
         int chain_power = -1;
-        int group_bonus = 0;
-        bool colors[(size_t)Block::Count] = { false };
 
         size_t min_row = (size_t)max<ptrdiff_t>(0, min<ptrdiff_t>(row1, row2) - 2);
         size_t max_row = min((size_t)ROWS, max(row1, row2) + 3);
@@ -385,6 +384,10 @@ public:
 
         do
         {
+            int blocks_count = 0;
+            int group_bonus = 0;
+            bool colors[(size_t)Block::Count] = { false };
+
             const int prev_blocks_count = blocks_count;
 
             //for_each_row_and_col([&](size_t row, size_t col)
@@ -419,6 +422,16 @@ public:
                 else
                     chain_power *= 2;
 
+                int colors_count = 0;
+                for (size_t i = 0; i < countof(colors); ++i)
+                {
+                    if (colors[i])
+                        ++colors_count;
+                }
+                int color_bonus = GetColorBonus(colors_count);
+
+                score += (10 * blocks_count) * max(chain_power + color_bonus + group_bonus, 1);
+
                 continue;
             }
 
@@ -426,18 +439,7 @@ public:
 
         } while (true);
 
-        if (blocks_count == 0)
-            return 0;
-
-        int colors_count = 0;
-        for (size_t i = 0; i < countof(colors); ++i)
-        {
-            if (colors[i])
-                ++colors_count;
-        }
-        int color_bonus = GetColorBonus(colors_count);
-
-        return (10 * blocks_count) * max(chain_power + color_bonus + group_bonus, 1);
+        return score;
     }
 
     void Colapse()
@@ -799,6 +801,17 @@ int main()
 
         int col = best_idx / ROTS;
         int rot = best_idx % ROTS;
+
+        if (0)
+        {
+            Grid calc_grid = MyGrid;
+            size_t row1, col1, row2, col2;
+            bool added = AddBlocksToGrid(calc_grid, col, rot, colorsA, colorsB, 0, row1, col1, row2, col2);
+
+            int score = added ? calc_grid.Simulate(row1, col1, row2, col2) : -1;
+
+            cerr << score << endl;
+        }
 
         cout << col << ' ' << rot << endl; // "x": the column in which to drop your blocks
     }
