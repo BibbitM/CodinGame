@@ -207,17 +207,17 @@ public:
             curr = next;
             next = GetHeight(row + 1);
 
-            static const int HEIGHT_DIFF_BONUS = 32 * MUL;
+            static const int HEIGHT_DIFF_BONUS = 64 * MUL;
 
-            if (curr - prev >= 2 && curr - prev <= 3)
-                rate += HEIGHT_DIFF_BONUS;
-            if (prev - curr >= 2 && prev - curr <= 3)
-                rate += HEIGHT_DIFF_BONUS;
+            if (curr - prev >= 2 && curr - prev <= 4)
+                rate += (6 - (curr - prev)) * HEIGHT_DIFF_BONUS;
+            if (prev - curr >= 2 && prev - curr <= 4)
+                rate += (6 - (prev - curr)) * HEIGHT_DIFF_BONUS;
 
-            if (curr - next >= 2 && curr - next <= 3)
-                rate += HEIGHT_DIFF_BONUS;
-            if (next - curr >= 2 && next - curr <= 3)
-                rate += HEIGHT_DIFF_BONUS;
+            if (curr - next >= 2 && curr - next <= 4)
+                rate += (6 - (curr - next)) * HEIGHT_DIFF_BONUS;
+            if (next - curr >= 2 && next - curr <= 4)
+                rate += (6 - (next - curr)) * HEIGHT_DIFF_BONUS;
         }
         //for_each_row_and_col([&](size_t row, size_t col)
         for (size_t row = 0; row < ROWS; ++row)
