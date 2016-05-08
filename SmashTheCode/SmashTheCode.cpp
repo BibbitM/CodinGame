@@ -230,7 +230,7 @@ public:
 
             if (IsSkull(block))
             {
-                rate -= 32 * MUL;
+                //rate -= 256 * MUL;
 
                 if (IsColor(Get(row + 1, col)))
                     rate += MUL;
@@ -549,7 +549,7 @@ private:
     Block m_Grid[ROWS][COLS];
 };
 
-int CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOVES], Block(&colorsB)[MOVES], int deep, int max_deep, int deep_bonus);
+pair<int, int> CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOVES], Block(&colorsB)[MOVES], int deep, int max_deep, int deep_bonus);
 
 int CalculateBestMove(const Grid& grid, Block(&colorsA)[MOVES], Block(&colorsB)[MOVES], int deep, int max_deep, int deep_bonus)
 {
@@ -559,7 +559,7 @@ int CalculateBestMove(const Grid& grid, Block(&colorsA)[MOVES], Block(&colorsB)[
     {
         for (size_t rot = 0; rot < ROTS; ++rot)
         {
-            values[col * ROTS + rot] = CalculateMove(grid, col, rot, colorsA, colorsB, deep, max_deep, deep_bonus);
+            values[col * ROTS + rot] = CalculateMove(grid, col, rot, colorsA, colorsB, deep, max_deep, deep_bonus).first;
         }
     }
 
@@ -600,7 +600,7 @@ inline bool AddBlocksToGrid(Grid& calc_grid, size_t col, size_t rot, Block(&colo
     return row1 != (size_t)-1 && row2 != (size_t)-1;
 }
 
-int CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOVES], Block(&colorsB)[MOVES], int deep, int max_deep, int deep_bonus)
+pair<int, int> CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOVES], Block(&colorsB)[MOVES], int deep, int max_deep, int deep_bonus)
 {
     Grid calc_grid = grid;
 
@@ -609,36 +609,51 @@ int CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOVE
     size_t row1, col1, row2, col2;
     bool added = AddBlocksToGrid(calc_grid, col, rot, colorsA, colorsB, deep, row1, col1, row2, col2);
 
+    int score = numeric_limits<int>::min();
+
     if (added)
     {
         int rate = calc_grid.CalculateRate();
-        int score = calc_grid.Simulate(row1, col1, row2, col2);
-        val = rate + (score + (score ? (/*MOVES - */deep) * deep_bonus : 0)) * numeric_limits<short>::max();
+        score = calc_grid.Simulate(row1, col1, row2, col2);
+        val = rate + (score + (score ? (/*MOVES - */deep) * /*max(deep_bonus, 0)*/0 : 0)) * numeric_limits<short>::max();
 
         if (deep < max_deep)//MOVES)
         {
             int best_val = CalculateBestMove(calc_grid, colorsA, colorsB, deep + 1, max_deep, deep_bonus);
-            if (best_val > 0)
+            if (best_val > numeric_limits<int>::min())
+            {
+                //best_val /= numeric_limits<short>::max();
+                //best_val *= numeric_limits<short>::max();
+
                 val += best_val;
+            }
             //else
             //    val = best_val;
         }
     }
 
-    return val;
+    return make_pair(val, score);
 }
 
 size_t FindBestMove(const Grid& grid, Block (&colorsA)[MOVES], Block(&colorsB)[MOVES], int max_deep, int deep_bonus)
 {
     int values[Grid::COLS * ROTS] = { 0 };
+    int scores[Grid::COLS * ROTS] = { 0 };
 
     for (size_t col = 0; col < Grid::COLS; ++col)
     {
         for (size_t rot = 0; rot < ROTS; ++rot)
         {
-            values[col * ROTS + rot] = CalculateMove(grid, col, rot, colorsA, colorsB, 0, max_deep, deep_bonus);
+            auto val_score = CalculateMove(grid, col, rot, colorsA, colorsB, 0, max_deep, deep_bonus);
+            values[col * ROTS + rot] = val_score.first;
+            scores[col * ROTS + rot] = val_score.second;
         }
     }
+
+    auto max_score_it = max_element(begin(scores), end(scores));
+    int max_score = *max_score_it;
+    if (max_score >= 6 * 70 * max(2 + deep_bonus * 2, 1))
+        return distance(begin(scores), max_score_it);
 
     auto max_it = max_element(begin(values), end(values));
     size_t max_idx = distance(begin(values), max_it);
@@ -760,20 +775,25 @@ int main()
 
         int other_best_score = CalculateNextMaxScore(OtherGrid, colorsA, colorsB);
 
-        if (other_best_score >= 6 * 70 * 4)
+        if (other_best_score >= 6 * 70 * 5)
+            deep_bonus = -1;
+        else if (other_best_score >= 6 * 70 * 3)
             deep_bonus = 0;
 
-        if (other_best_score >= 6 * 70 * 6)
+        if (other_best_score >= 6 * 70 * 12)
             max_deep = 0;
-        else if (other_best_score >= 6 * 70 * 3)
+        else if (other_best_score >= 6 * 70 * 4)
             max_deep = 1;
 
         size_t skulls_num = MyGrid.CalculateBlocksNumber(Block::Skull);
-        if (skulls_num >= 6 * 2)
-            deep_bonus = 0;
-        size_t empty_num = MyGrid.CalculateBlocksNumber(Block::Empty);;
+        if (skulls_num >= 6 * 4)
+            deep_bonus = min(deep_bonus, 0);
+        size_t empty_num = MyGrid.CalculateBlocksNumber(Block::Empty);
         if (empty_num <= 6 * 2)
-            deep_bonus = 0;
+            deep_bonus = min(deep_bonus, 0);
+        size_t oter_empty_num = OtherGrid.CalculateBlocksNumber(Block::Empty);
+        if (oter_empty_num <= 6 * 2)
+            deep_bonus = min(deep_bonus, 0);
 
         size_t best_idx = FindBestMove(MyGrid, colorsA, colorsB, max_deep, deep_bonus);
 
