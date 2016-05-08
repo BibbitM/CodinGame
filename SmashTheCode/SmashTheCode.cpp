@@ -106,7 +106,7 @@ public:
 
     /// Allows direct read access to grid.
     //const array<Block, COLS>& operator[](size_t idx) const { assert(idx < ROWS); return m_Grid[idx]; }
-    const Block* operator[](size_t idx) const { assert(idx < ROWS); return m_Grid[idx]; }
+    const Block* operator[](size_t idx) const { /*assert(idx < ROWS);*/ return m_Grid[idx]; }
 
     /// Gets value of specified grid cell.
     /** If row or col is outside bounds then returns Block::Empty. */
@@ -207,7 +207,7 @@ public:
             curr = next;
             next = GetHeight(row + 1);
 
-            static const int HEIGHT_DIFF_BONUS = 64 * MUL;
+            static const int HEIGHT_DIFF_BONUS = 32 * MUL;
 
             if (curr - prev >= 2 && curr - prev <= 4)
                 rate += (6 - (curr - prev)) * HEIGHT_DIFF_BONUS;
@@ -233,13 +233,13 @@ public:
                 //rate -= 256 * MUL;
 
                 if (IsColor(Get(row + 1, col)))
-                    rate += MUL;
+                    rate += 64 * MUL;
                 if (IsColor(Get(row - 1, col)))
-                    rate += MUL;
+                    rate += 64 * MUL;
                 if (IsColor(Get(row, col + 1)))
-                    rate += MUL;
+                    rate += 64 * MUL;
                 if (IsColor(Get(row, col - 1)))
-                    rate += MUL;
+                    rate += 64 * MUL;
             }
 
             if (IsColor(block))
@@ -541,7 +541,7 @@ private:
 
     void ReadRow(size_t row, const string& line)
     {
-        assert(row < ROWS);
+        //assert(row < ROWS);
 
         for (size_t i = 0; i < COLS; ++i)
             m_Grid[row][i] = BlockFromChar(line[i]);
@@ -615,9 +615,12 @@ pair<int, int> CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&co
 
     if (added)
     {
-        int rate = calc_grid.CalculateRate();
+        int rate = calc_grid.CalculateRate() / 1000;
+
+        //assert(rate < numeric_limits<short>::max());
+        //assert(rate >= 0);
         score = calc_grid.Simulate(row1, col1, row2, col2);
-        val = rate + (score + (score ? (/*MOVES - */deep) * /*max(deep_bonus, 0)*/0 : 0)) * numeric_limits<short>::max();
+        val = rate + (score + (score ? (/*MOVES - */deep) * max(deep_bonus, 0) : 0)) * numeric_limits<short>::max();
 
         if (deep < max_deep)//MOVES)
         {
@@ -637,7 +640,7 @@ pair<int, int> CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&co
     return make_pair(val, score);
 }
 
-size_t FindBestMove(const Grid& grid, Block (&colorsA)[MOVES], Block(&colorsB)[MOVES], int max_deep, int deep_bonus)
+size_t FindBestMove(const Grid& grid, Block (&colorsA)[MOVES], Block(&colorsB)[MOVES], int max_deep, int deep_bonus, int other_max_score)
 {
     int values[Grid::COLS * ROTS] = { 0 };
     int scores[Grid::COLS * ROTS] = { 0 };
@@ -655,6 +658,13 @@ size_t FindBestMove(const Grid& grid, Block (&colorsA)[MOVES], Block(&colorsB)[M
     auto max_score_it = max_element(begin(scores), end(scores));
     int max_score = *max_score_it;
     if (max_score >= 6 * 70 * max(2 + deep_bonus * 2, 1))
+        return distance(begin(scores), max_score_it);
+
+    if (max_score >= 6 * 70 * 3 && other_max_score >= 6 * 70 * 1)
+        return distance(begin(scores), max_score_it);
+    if (max_score >= 6 * 70 * 2 && other_max_score >= 6 * 70 * 3)
+        return distance(begin(scores), max_score_it);
+    if (max_score >= 6 * 70 * 1 && other_max_score >= 6 * 70 * 6)
         return distance(begin(scores), max_score_it);
 
     auto max_it = max_element(begin(values), end(values));
@@ -739,7 +749,7 @@ int main()
         MyGrid.Read(lines);
         MyGrid.Print(cerr);
 
-        size_t best_idx = FindBestMove(MyGrid, colorsA, colorsB, 2, 1);
+        size_t best_idx = FindBestMove(MyGrid, colorsA, colorsB, 2, 1, 0);
 
         int col = best_idx / ROTS;
         int rot = best_idx % ROTS;
@@ -777,14 +787,14 @@ int main()
 
         int other_best_score = CalculateNextMaxScore(OtherGrid, colorsA, colorsB);
 
-        if (other_best_score >= 6 * 70 * 5)
+        if (other_best_score >= 6 * 70 * 12)
             deep_bonus = -1;
-        else if (other_best_score >= 6 * 70 * 3)
+        else if (other_best_score >= 6 * 70 * 8)
             deep_bonus = 0;
 
         if (other_best_score >= 6 * 70 * 12)
             max_deep = 0;
-        else if (other_best_score >= 6 * 70 * 4)
+        else if (other_best_score >= 6 * 70 * 8)
             max_deep = 1;
 
         size_t skulls_num = MyGrid.CalculateBlocksNumber(Block::Skull);
@@ -797,7 +807,7 @@ int main()
         if (oter_empty_num <= 6 * 2)
             deep_bonus = min(deep_bonus, 0);
 
-        size_t best_idx = FindBestMove(MyGrid, colorsA, colorsB, max_deep, deep_bonus);
+        size_t best_idx = FindBestMove(MyGrid, colorsA, colorsB, max_deep, deep_bonus, other_best_score);
 
         int col = best_idx / ROTS;
         int rot = best_idx % ROTS;
@@ -810,7 +820,12 @@ int main()
 
             int score = added ? calc_grid.Simulate(row1, col1, row2, col2) : -1;
 
-            cerr << score << endl;
+            cerr << "My: " << score << endl;
+        }
+
+        if (0)
+        {
+            cerr << "Other: " << other_best_score << endl;
         }
 
         cout << col << ' ' << rot << endl; // "x": the column in which to drop your blocks
