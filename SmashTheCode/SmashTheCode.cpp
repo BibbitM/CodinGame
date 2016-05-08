@@ -134,6 +134,18 @@ public:
         m_Grid[row][col] = Block::Empty;
     }
 
+    size_t GetHeight(size_t row) const
+    {
+        if (row >= ROWS)
+            return 0;
+
+        size_t col = 0;
+        while (col < COLS && m_Grid[row][col] != Block::Empty)
+            ++col;
+
+        return col;
+    }
+
     template <typename FUNC>
     void for_each_row_and_col(FUNC func) const
     {
@@ -164,19 +176,56 @@ public:
         return false;
     }
 
+    size_t CalculateBlocksNumber(Block block) const
+    {
+        size_t num = 0;
+        for (size_t row = 0; row < ROWS; ++row)
+        {
+            for (size_t col = 0; col < COLS; ++col)
+            {
+                if (Get(row, col) == block)
+                    ++num;
+            }
+        }
+
+        return num;
+    }
+
     /// Calculates current grid rate.
     /** This is custom method of rating grid. */
     int CalculateRate() const
     {
         int rate = 0;
+
+        size_t prev = 0;
+        size_t curr = GetHeight((size_t)-1);
+        size_t next = GetHeight(0);
+        for (size_t row = 0; row < ROWS; ++row)
+        {
+            prev = curr;
+            curr = next;
+            next = GetHeight(row + 1);
+
+            static const int HEIGHT_DIFF_BONUS = 32 * ROWS*ROWS;
+
+            if (curr - prev >= 2 && curr - prev <= 3)
+                rate += HEIGHT_DIFF_BONUS;
+            if (prev - curr >= 2 && prev - curr <= 3)
+                rate += HEIGHT_DIFF_BONUS;
+
+            if (curr - next >= 2 && curr - next <= 3)
+                rate += HEIGHT_DIFF_BONUS;
+            if (next - curr >= 2 && next - curr <= 3)
+                rate += HEIGHT_DIFF_BONUS;
+        }
         //for_each_row_and_col([&](size_t row, size_t col)
         for (size_t row = 0; row < ROWS; ++row)
             for (size_t col = 0; col < COLS; ++col)
         {
             Block block = Get(row, col);
 
-            //if (IsEmpty(block))
-            //    rate += (ROWS - row);
+            if (IsEmpty(block))
+                rate += (ROWS - row);
 
             if (IsSkull(block))
             {
@@ -201,26 +250,26 @@ public:
                 // x  x..
                 if (Get(row + 1, col + 0) == block &&
                     Get(row + 2, col + 0) == block)
-                    rate += 16 * MUL;
+                    rate += 32 * MUL;
                 if (Get(row + 0, col + 1) == block &&
                     Get(row + 0, col + 2) == block)
-                    rate += 16 * MUL;
+                    rate += 32 * MUL;
 
                 //  .  .    .  .
                 //  .  .   .    .
                 // x    x  x    x
                 if (Get(row + 1, col + 1) == block &&
                     Get(row + 2, col + 1) == block)
-                    rate += 16 * MUL;
+                    rate += 64 * MUL;
                 if (Get(row + 1, col - 1) == block &&
                     Get(row + 2, col - 1) == block)
-                    rate += 16 * MUL;
+                    rate += 64 * MUL;
                 if (Get(row + 1, col + 0) == block &&
                     Get(row + 2, col + 1) == block)
-                    rate += 16 * MUL;
+                    rate += 64 * MUL;
                 if (Get(row + 1, col + 0) == block &&
                     Get(row + 2, col - 1) == block)
-                    rate += 16 * MUL;
+                    rate += 64 * MUL;
 
                 //  ..  ..     x  x
                 // x      x  ..    ..
@@ -296,7 +345,7 @@ public:
     }
     
     /// Simulates next move and calculates score.
-    int Simulate()
+    int Simulate(/*size_t row1, size_t col1, size_t row2, size_t col2*/)
     {
         int blocks_count = 0;
         int chain_power = -1;
@@ -401,7 +450,7 @@ public:
 
     void Read(istream& in)
     {
-        string line;
+        static string line;
         for (size_t i = 0; i < ROWS; ++i)
         {
             in >> line; in.ignore();
@@ -523,8 +572,8 @@ int CalculateMove(const Grid& grid, size_t col, size_t rot, Block(&colorsA)[MOVE
             int best_val = CalculateBestMove(calc_grid, colorsA, colorsB, deep + 1, max_deep, deep_bonus);
             if (best_val > 0)
                 val += best_val;
-            else
-                val = best_val;
+            //else
+            //    val = best_val;
         }
     }
 
@@ -659,11 +708,23 @@ int main()
 
         int max_deep = 2;
         int deep_bonus = 1;
+
         int other_best_score = CalculateNextMaxScore(OtherGrid, colorsA, colorsB);
+
         if (other_best_score >= 6 * 70 * 4)
             deep_bonus = 0;
-        if (other_best_score >= 6 * 70 * 2)
+
+        if (other_best_score >= 6 * 70 * 6)
+            max_deep = 0;
+        else if (other_best_score >= 6 * 70 * 3)
             max_deep = 1;
+
+        size_t skulls_num = MyGrid.CalculateBlocksNumber(Block::Skull);
+        if (skulls_num >= 6 * 4)
+            deep_bonus = 0;
+        size_t empty_num = MyGrid.CalculateBlocksNumber(Block::Skull);;
+        if (empty_num <= 6 * 3)
+            deep_bonus = 0;
 
         size_t best_idx = FindBestMove(MyGrid, colorsA, colorsB, max_deep, deep_bonus);
 
