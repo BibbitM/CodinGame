@@ -244,6 +244,9 @@ public:
 
             if (IsColor(block))
             {
+                if (col >= 1 && col < COLS - 1)
+                    rate += 128 * MUL;
+
                 // .
                 // .
                 // x  x..
