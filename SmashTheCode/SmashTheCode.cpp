@@ -336,7 +336,7 @@ public:
                 if (Get(row, col + 1) == block)
                     rate += 1 * MUL;
                 if (Get(row + 1, col) == block)
-                    rate += 1 * MUL;
+                    rate += 128 * MUL;
             }
         }//);
 
