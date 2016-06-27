@@ -327,13 +327,17 @@ int main()
                 {
                     int twinEntityId = entityId % 2 ? entityId + 1 : entityId - 1;
 
-                    auto& twinGhost = ghosts[twinEntityId];
-                    if (twinGhost.GetState() == Ghost::EState::Undefined)
+                    auto found = ghosts.find(twinEntityId);
+                    if (found != ghosts.end())
                     {
-                        twinGhost.SetId(entityId);
-                        twinGhost.SetPosition(MAP_RIGHT - x, MAP_BOTTOM - y);
-                        twinGhost.SetState(Ghost::EState::UnknownPositon);
-                        twinGhost.SetStamina(state);
+                        auto& twinGhost = found->second;
+                        if (twinGhost.GetState() == Ghost::EState::Undefined)
+                        {
+                            twinGhost.SetId(entityId);
+                            twinGhost.SetPosition(MAP_RIGHT - x, MAP_BOTTOM - y);
+                            twinGhost.SetState(Ghost::EState::UnknownPositon);
+                            twinGhost.SetStamina(state);
+                        }
                     }
                 }
             }
