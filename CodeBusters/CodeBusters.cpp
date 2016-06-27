@@ -107,13 +107,17 @@ public:
         Busting,
         Busted,
     };
-    Ghost() : Entity(), m_State(EState::Undefined) { }
+    Ghost() : Entity(), m_State(EState::Undefined), m_Stamina(0) { }
 
     void SetState(EState state) { m_State = state; }
     EState GetState() const { return m_State; }
 
+    void SetStamina(int stamina) { m_Stamina = stamina; }
+    int GetStamina() const { return m_Stamina; }
+
 private:
     EState m_State;
+    int m_Stamina;
 };
 
 class Buster : public Entity
@@ -296,7 +300,9 @@ int main()
                 entity.SetPosition(x, y);
                 switch (state)
                 {
-                case 0:
+                default:
+                //case 0:
+                //case 3:
                     entity.SetState(Buster::EState::KnownPosition);
                     break;
                 case 1:
@@ -310,13 +316,26 @@ int main()
             }
             else
             {
-                int idx = entityId;
-
-                auto& ghost = ghosts[idx];
+                auto& ghost = ghosts[entityId];
 
                 ghost.SetId(entityId);
                 ghost.SetPosition(x, y);
                 ghost.SetState(value == 0 ? Ghost::EState::KnownPosition : Ghost::EState::Busting);
+                ghost.SetStamina(state);
+
+                if (entityId != 0)
+                {
+                    int twinEntityId = entityId % 2 ? entityId + 1 : entityId - 1;
+
+                    auto& twinGhost = ghosts[twinEntityId];
+                    if (twinGhost.GetState() == Ghost::EState::Undefined)
+                    {
+                        twinGhost.SetId(entityId);
+                        twinGhost.SetPosition(MAP_RIGHT - x, MAP_BOTTOM - y);
+                        twinGhost.SetState(Ghost::EState::UnknownPositon);
+                        twinGhost.SetStamina(state);
+                    }
+                }
             }
         }
 
@@ -395,7 +414,25 @@ int main()
             }
             else
             {
-                auto ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::KnownPosition, ghosts);
+                auto ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::Busting, ghosts);
+                if (ghost)
+                {
+                    auto dist = Distance(player.GetPosition(), ghost->GetPosition());
+                    cerr << "B " << dist << '(' << ghost->GetId() << ')' << endl;
+
+                    ghost->SetState(Ghost::EState::Busting);
+
+                    if (dist > MAX_GHOST_BUST_RADIUS)
+                        cout << "MOVE " << ghost->GetPosition() << endl;
+                    else if (dist < MIN_GHOST_BUST_RADIUS)
+                        cout << "MOVE " << player.GetPosition() << endl;
+                    else
+                        cout << "BUST " << ghost->GetId() << endl;
+
+                    continue;
+                }
+
+                ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::KnownPosition, ghosts);
                 if (ghost)
                 {
                     auto dist = Distance(player.GetPosition(), ghost->GetPosition());
@@ -422,25 +459,7 @@ int main()
                     ghost->SetState(Ghost::EState::Busting);
 
                     cout << "MOVE " << ghost->GetPosition() << endl;
-
-                    continue;
-                }
-
-                ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::Busting, ghosts);
-                if (ghost)
-                {
-                    auto dist = Distance(player.GetPosition(), ghost->GetPosition());
-                    cerr << "B " << dist << '(' << ghost->GetId() << ')' << endl;
-
-                    ghost->SetState(Ghost::EState::Busting);
-
-                    if (dist > MAX_GHOST_BUST_RADIUS)
-                        cout << "MOVE " << ghost->GetPosition() << endl;
-                    else if (dist < MIN_GHOST_BUST_RADIUS)
-                        cout << "MOVE " << player.GetPosition() << endl;
-                    else
-                        cout << "BUST " << ghost->GetId() << endl;
-
+                                                                
                     continue;
                 }
             }
