@@ -202,7 +202,7 @@ Buster* FindNearestNotStunnedEnemy(const Point& position, vector<Buster>& enemie
     for (int i = 0; i < (int)enemies.size(); ++i)
     {
         const auto& enemy = enemies[i];
-        if (enemy.GetState() == Buster::EState::Stunned || enemy.GetId() < 0)
+        if (enemy.GetState() == Buster::EState::Stunned || enemy.GetState() == Buster::EState::UnknownPosition || enemy.GetId() < 0)
             continue;
 
         auto dist = Distance(position, enemy.GetPosition());
