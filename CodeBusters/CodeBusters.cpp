@@ -29,7 +29,8 @@ constexpr std::size_t countof(T const (&)[N]) noexcept
     return N;
 }
 
-inline int sqr(int val)
+template <typename T>
+inline T sqr(T val)
 {
     return val * val;
 }
@@ -41,8 +42,8 @@ struct Point
 
     void Set(int x, int y) { m_X = x; m_Y = y; }
 
-    int m_X;
-    int m_Y;
+    Point operator+(const Point& right) const { return Point(this->m_X + right.m_X, this->m_Y + right.m_Y); }
+    Point operator-(const Point& right) const { return Point(this->m_X - right.m_X, this->m_Y - right.m_Y); }
 
     bool operator==(const Point& right)
     {
@@ -53,6 +54,42 @@ struct Point
     {
         return stream << point.m_X << " " << point.m_Y;
     }
+
+    int m_X;
+    int m_Y;
+};
+
+struct Vector
+{
+    Vector() : m_X(0.0f), m_Y(0.0f) { }
+    Vector(float x, float y) : m_X(x), m_Y(y) { }
+    Vector(const Point& point) : m_X(static_cast<float>(point.m_X)), m_Y(static_cast<float>(point.m_Y)) { }
+
+    void Set(float x, float y) { m_X = x; m_Y = y; }
+
+    operator Point() const { return Point(static_cast<int>(m_X + 0.5f), static_cast<int>(m_Y + 0.5f)); }
+
+    friend Vector operator*(const Vector& left, float right) { return Vector(left.m_X * right, left.m_Y * right); }
+    friend Vector operator*(float left, const Vector& right) { return Vector(left * right.m_X, left * right.m_Y); }
+    friend Vector operator/(const Vector& left, float right) { return Vector(left.m_X / right, left.m_Y / right); }
+    friend Vector operator/(float left, const Vector& right) { return Vector(left / right.m_X, left / right.m_Y); }
+
+    Vector operator+(const Vector& right) const { return Vector(this->m_X + right.m_X, this->m_Y + right.m_Y); }
+    Vector operator-(const Vector& right) const { return Vector(this->m_X - right.m_X, this->m_Y - right.m_Y); }
+
+    float GetLength() const
+    {
+        return sqrt(sqr(m_X) - sqr(m_Y));
+    }
+
+    Vector GetNormalized() const
+    {
+        return *this / GetLength();
+
+    }
+
+    float m_X;
+    float m_Y;
 };
 
 int Distance(const Point& first, const Point& second)
@@ -150,6 +187,7 @@ public:
     Player() : Buster(), m_DestPos(0, 0), m_StunningRound(numeric_limits<int>::min()) { }
 
     void SetDestPos(int x, int y) { m_DestPos.Set(x, y); }
+    void SetDestPos(const Point& pos) { m_DestPos = pos; }
     Point GetDestPos() const { return m_DestPos; }
 
     void SetStunning(int round) { m_StunningRound = round; }
@@ -175,6 +213,26 @@ Point GetReturnPosition(int teamId)
     return teamId == 0 ? Point(RETURN_COORDS, RETURN_COORDS) : Point(MAP_RIGHT - RETURN_COORDS, MAP_BOTTOM - RETURN_COORDS);
 }
 
+Ghost* FindNearestGhost(const Point& position, map<int, Ghost>& ghosts)
+{
+    int nearestDist = numeric_limits<int>::max();
+    Ghost* nearestGhost = nullptr;
+    for (auto& ghost : ghosts)
+    {
+        if (ghost.second.GetState() == Ghost::EState::Undefined || ghost.second.GetState() == Ghost::EState::Busted)
+            continue;
+
+        auto dist = Distance(position, ghost.second.GetPosition()) + ghost.second.GetStamina() * MOVE_DISTANCE / (ghost.second.GetState() != Ghost::EState::Busting ? 1 : 2);
+        if (dist < nearestDist)
+        {
+            nearestDist = dist;
+            nearestGhost = &ghost.second;
+        }
+    }
+
+    return nearestGhost;
+}
+
 Ghost* FindNearestGhostWithState(const Point& position, Ghost::EState state, map<int, Ghost>& ghosts)
 {
     int nearestDist = numeric_limits<int>::max();
@@ -184,7 +242,7 @@ Ghost* FindNearestGhostWithState(const Point& position, Ghost::EState state, map
         if (ghost.second.GetState() != state)
             continue;
 
-        auto dist = Distance(position, ghost.second.GetPosition());
+        auto dist = Distance(position, ghost.second.GetPosition()) + ghost.second.GetStamina() * MOVE_DISTANCE;
         if (dist < nearestDist)
         {
             nearestDist = dist;
@@ -307,6 +365,13 @@ int main()
                     break;
                 case 1:
                     entity.SetState(Buster::EState::Carring);
+                    {
+                        auto& ghost = ghosts[value];
+
+                        ghost.SetId(value);
+                        ghost.SetState(Ghost::EState::Busted);
+                        ghost.SetStamina(0);
+                    }
                     break;
                 case 2:
                     entity.SetState(Buster::EState::Stunned);
@@ -328,16 +393,14 @@ int main()
                     int twinEntityId = entityId % 2 ? entityId + 1 : entityId - 1;
 
                     auto found = ghosts.find(twinEntityId);
-                    if (found != ghosts.end())
+                    if (found == ghosts.end())
                     {
-                        auto& twinGhost = found->second;
-                        if (twinGhost.GetState() == Ghost::EState::Undefined)
-                        {
-                            twinGhost.SetId(entityId);
-                            twinGhost.SetPosition(MAP_RIGHT - x, MAP_BOTTOM - y);
-                            twinGhost.SetState(Ghost::EState::UnknownPositon);
-                            twinGhost.SetStamina(state);
-                        }
+                        auto& twinGhost = ghosts[twinEntityId];
+
+                        twinGhost.SetId(twinEntityId);
+                        twinGhost.SetPosition(MAP_RIGHT - x, MAP_BOTTOM - y);
+                        twinGhost.SetState(Ghost::EState::UnknownPositon);
+                        twinGhost.SetStamina(state);
                     }
                 }
             }
@@ -368,7 +431,7 @@ int main()
                     if (Distance(player.GetPosition(), ghost.second.GetPosition()) < FOG_OF_WAR_RADIUS)
                     {
                         ghost.second.SetState(Ghost::EState::Undefined);
-                        cerr << '?';
+                        cerr << '-';
                     }
                 }
             }
@@ -418,7 +481,11 @@ int main()
             }
             else
             {
-                auto ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::Busting, ghosts);
+                //auto ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::Busting, ghosts);
+                //if (!ghost)
+                //    ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::KnownPosition, ghosts);
+                auto ghost = FindNearestGhost(player.GetPosition(), ghosts);
+
                 if (ghost)
                 {
                     auto dist = Distance(player.GetPosition(), ghost->GetPosition());
@@ -429,31 +496,29 @@ int main()
                     if (dist > MAX_GHOST_BUST_RADIUS)
                         cout << "MOVE " << ghost->GetPosition() << endl;
                     else if (dist < MIN_GHOST_BUST_RADIUS)
-                        cout << "MOVE " << player.GetPosition() << endl;
+                    {
+                        Vector dir;
+
+                        if (dist == 0)
+                            dir = Vector(GetBasePosition(myTeamId)) - Vector(ghost->GetPosition());
+                        else
+                            dir = Vector(player.GetPosition()) - Vector(ghost->GetPosition());
+                        dir = dir.GetNormalized();
+
+                        Point dest_pos = ghost->GetPosition() + dir * (static_cast<float>(MIN_GHOST_BUST_RADIUS));
+
+                        cout << "MOVE " << dest_pos << endl;
+                    }
                     else
                         cout << "BUST " << ghost->GetId() << endl;
+
+                    if (ghost->GetState() == Ghost::EState::UnknownPositon)
+                        player.SetDestPos(ghost->GetPosition());
 
                     continue;
                 }
 
-                ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::KnownPosition, ghosts);
-                if (ghost)
-                {
-                    auto dist = Distance(player.GetPosition(), ghost->GetPosition());
-                    cerr << "KP " << dist << '(' << ghost->GetId() << ')' << endl;
-
-                    ghost->SetState(Ghost::EState::Busting);
-
-                    if (dist > MAX_GHOST_BUST_RADIUS)
-                        cout << "MOVE " << ghost->GetPosition() << endl;
-                    else if (dist < MIN_GHOST_BUST_RADIUS)
-                        cout << "MOVE " << player.GetPosition() << endl;
-                    else
-                        cout << "BUST " << ghost->GetId() << endl;
-
-                    continue;
-                }
-
+                /*
                 ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::UnknownPositon, ghosts);
                 if (ghost)
                 {
@@ -463,13 +528,28 @@ int main()
                     ghost->SetState(Ghost::EState::Busting);
 
                     cout << "MOVE " << ghost->GetPosition() << endl;
-                                                                
+
+                    player.SetDestPos(ghost->GetPosition());
+
                     continue;
                 }
+                */
             }
 
             if (player.GetDestPos() == player.GetPosition())
-                player.SetDestPos(rand() % (MAP_RIGHT + 1), rand() % (MAP_BOTTOM + 1));
+            {
+                int rand_x = rand() % (MAP_RIGHT + 1);
+                rand_x = rand() % (rand_x + 1);
+                int rand_y = rand() % (MAP_BOTTOM + 1);
+                rand_y = rand() % (rand_y + 1);
+
+                if (rand() % 2)
+                    rand_x = MAP_RIGHT - rand_x;
+                else
+                    rand_y = MAP_BOTTOM - rand_y;
+
+                player.SetDestPos(rand_x, rand_y);
+            }
 
             cerr << "N" << endl;
             cout << "MOVE " << player.GetDestPos() << endl; // MOVE x y | BUST id | RELEASE
