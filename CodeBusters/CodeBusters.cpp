@@ -3,12 +3,14 @@
 #include <vector>
 #include <algorithm>
 #include <utility>
+#include <cassert>
 #include <cmath>
 #include <cstdlib>
 #include <map>
 
 using namespace std;
 
+static const int TEAMS_COUNT = 2;
 static const int FOG_OF_WAR_RADIUS = 2200;
 static const int MOVE_DISTANCE = 800;
 static const int GHOST_RUN_AWAY_DISTANCE = 400;
@@ -100,6 +102,52 @@ int Distance(const Point& first, const Point& second)
 
     return (int)ceil(sqrt((float)dist2));
 }
+
+class Base
+{
+public:
+    Base(int teamId) : m_TeamId(teamId) { }
+
+    Point GetPosition() const
+    {
+        return m_TeamId == 0 ? Point(0, 0) : Point(MAP_RIGHT, MAP_BOTTOM);
+    }
+
+    bool IsPositionInside(const Point& position) const
+    {
+        return Distance(position, GetPosition()) < RETURN_DISTANCE;
+    }
+
+    Point GetReturnPosition() const
+    {
+        return m_TeamId == 0 ? Point(RETURN_COORDS, RETURN_COORDS) : Point(MAP_RIGHT - RETURN_COORDS, MAP_BOTTOM - RETURN_COORDS);
+    }
+
+private:
+    int m_TeamId = 0;
+};
+
+class World
+{
+public:
+    void SetPlayerTeamId(int teamId) { assert(teamId >= 0 && teamId < TEAMS_COUNT); m_PlayerTeamId = teamId; }
+    int GetPlayerTeamId() const { return m_PlayerTeamId; }
+    int GetEnemyTeamId() const { return (m_PlayerTeamId + 1) % TEAMS_COUNT; }
+
+    const Base& GetBase(int teamId) const { return m_Bases[teamId]; }
+    const Base& GetPlayerBase() const { return GetBase(GetPlayerTeamId()); }
+    const Base& GetEnemyBase() const { return GetBase(GetEnemyTeamId()); }
+
+    void NextRound() { ++m_RoundNum; }
+    int GetRound() const { return m_RoundNum; }
+
+private:
+    static_assert(TEAMS_COUNT == 2, "World implementation assumes that there is only 2 worlds");
+    Base m_Bases[TEAMS_COUNT] = { Base(0), Base(1) };
+    int m_PlayerTeamId = 0;
+
+    int m_RoundNum = 0;
+};
 
 class Path
 {
@@ -200,21 +248,6 @@ private:
     int m_StunningRound;
 };
 
-Point GetBasePosition(int teamId)
-{
-    return teamId == 0 ? Point(0, 0) : Point(MAP_RIGHT, MAP_BOTTOM);
-}
-
-bool IsInBase(const Point& position, int teamId)
-{
-    return Distance(position, GetBasePosition(teamId)) < RETURN_DISTANCE;
-}
-
-Point GetReturnPosition(int teamId)
-{
-    return teamId == 0 ? Point(RETURN_COORDS, RETURN_COORDS) : Point(MAP_RIGHT - RETURN_COORDS, MAP_BOTTOM - RETURN_COORDS);
-}
-
 Ghost* FindNearestGhost(const Point& position, map<int, Ghost>& ghosts)
 {
     int nearestDist = numeric_limits<int>::max();
@@ -281,12 +314,16 @@ Buster* FindNearestNotStunnedEnemy(const Point& position, vector<Buster>& enemie
  **/
 int main()
 {
+    World world;
+
     int bustersPerPlayer; // the amount of busters you control
     cin >> bustersPerPlayer; cin.ignore();
     int ghostCount; // the amount of ghosts on the map
     cin >> ghostCount; cin.ignore();
     int myTeamId; // if this is 0, your base is on the top left of the map, if it is one, on the bottom right
     cin >> myTeamId; cin.ignore();
+
+    world.SetPlayerTeamId(myTeamId);
 
     vector<Player> players(bustersPerPlayer);
     vector<Buster> enemies(bustersPerPlayer);
@@ -309,12 +346,10 @@ int main()
         player.SetDestPos(MAP_RIGHT / (bustersPerPlayer + 1) * (i + 1), MAP_BOTTOM / 2);
     }
 
-    int round = 0;
-    
     // game loop
     while (1)
     {
-        ++round;
+        world.NextRound();
 
         // Clear entities' states.
         for (auto& player : players)
@@ -446,8 +481,8 @@ int main()
         {
             auto& player = players[i];
 
-            cerr << (player.CanStun(round) ? 'y' : 'n');
-            if (player.CanStun(round))
+            cerr << (player.CanStun(world.GetRound()) ? 'y' : 'n');
+            if (player.CanStun(world.GetRound()))
             {
                 auto enemy = FindNearestNotStunnedEnemy(player.GetPosition(), enemies);
                 if (enemy)
@@ -459,7 +494,7 @@ int main()
 
                     cout << "STUN " << enemy->GetId() << endl;
 
-                    player.SetStunning(round);
+                    player.SetStunning(world.GetRound());
                     enemy->SetState(Buster::EState::Stunned);
 
                     continue;
@@ -468,16 +503,16 @@ int main()
 
             if (player.GetState() == Buster::EState::Carring)
             {
-                auto dist = Distance(player.GetPosition(), GetReturnPosition(myTeamId));
+                auto dist = Distance(player.GetPosition(), world.GetPlayerBase().GetReturnPosition());
                 cerr << "R " << dist << endl;
 
-                if (IsInBase(player.GetPosition(), myTeamId))
+                if (world.GetPlayerBase().IsPositionInside(player.GetPosition()))
                 {
                     ghosts[player.GetCarriedId()].SetState(Ghost::EState::Busted);
                     cout << "RELEASE" << endl;
                 }
                 else
-                    cout << "MOVE " << GetReturnPosition(myTeamId) << endl;
+                    cout << "MOVE " << world.GetPlayerBase().GetReturnPosition() << endl;
 
                 continue;
             }
@@ -502,7 +537,7 @@ int main()
                         Vector dir;
 
                         if (dist == 0)
-                            dir = Vector(GetBasePosition(myTeamId)) - Vector(ghost->GetPosition());
+                            dir = Vector(world.GetPlayerBase().GetPosition()) - Vector(ghost->GetPosition());
                         else
                             dir = Vector(player.GetPosition()) - Vector(ghost->GetPosition());
                         dir = dir.GetNormalized();
