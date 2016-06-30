@@ -149,24 +149,6 @@ private:
     int m_RoundNum = 0;
 };
 
-class Path
-{
-public:
-    Path() { }
-
-    //template<typename... Args>
-    //Path(Args&&... args)
-    //    : m_Points(forward<Args>(args)...)
-    //{  }
-
-    Path(initializer_list<Point> list)
-        : m_Points(list)
-    { }
-    
-private:
-    vector<Point> m_Points;
-};
-
 class Entity
 {
 public:
@@ -328,15 +310,6 @@ int main()
     vector<Player> players(bustersPerPlayer);
     vector<Buster> enemies(bustersPerPlayer);
     map<int, Ghost> ghosts;
-
-    Path paths[] = {
-        Path({ Point(1500, 1500), Point(14500, 1500) }),
-        Path({ Point(1500, 1500), Point(4500, 4500), Point(14500, 4500) }),
-        Path({ Point(1500, 1500), Point(1500, 7500), Point(14500, 7500) }),
-        Path({ Point(1500, 1500), Point(4500, 7500), Point(7500, 1500), Point(10500, 7500), Point(13500, 1500), Point(15000, 4500) })
-    };
-
-    static_assert(countof(paths) == 4, "Wrong size");
 
     // Set initial destination positions.
     for (int i = 0; i < bustersPerPlayer; ++i)
