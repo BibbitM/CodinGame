@@ -127,28 +127,6 @@ private:
     int m_TeamId = 0;
 };
 
-class World
-{
-public:
-    void SetPlayerTeamId(int teamId) { assert(teamId >= 0 && teamId < TEAMS_COUNT); m_PlayerTeamId = teamId; }
-    int GetPlayerTeamId() const { return m_PlayerTeamId; }
-    int GetEnemyTeamId() const { return (m_PlayerTeamId + 1) % TEAMS_COUNT; }
-
-    const Base& GetBase(int teamId) const { return m_Bases[teamId]; }
-    const Base& GetPlayerBase() const { return GetBase(GetPlayerTeamId()); }
-    const Base& GetEnemyBase() const { return GetBase(GetEnemyTeamId()); }
-
-    void NextRound() { ++m_RoundNum; }
-    int GetRound() const { return m_RoundNum; }
-
-private:
-    static_assert(TEAMS_COUNT == 2, "World implementation assumes that there is only 2 worlds");
-    Base m_Bases[TEAMS_COUNT] = { Base(0), Base(1) };
-    int m_PlayerTeamId = 0;
-
-    int m_RoundNum = 0;
-};
-
 class Entity
 {
 public:
@@ -230,6 +208,322 @@ private:
     int m_StunningRound;
 };
 
+Ghost* FindNearestGhost(const Point& position, map<int, Ghost>& ghosts);
+Ghost* FindNearestGhostWithState(const Point& position, Ghost::EState state, map<int, Ghost>& ghosts);
+Buster* FindNearestNotStunnedEnemy(const Point& position, vector<Buster>& enemies);
+
+class World
+{
+public:
+    void Initialize(istream& in)
+    {
+        ReadWorldParameters(in);
+
+        CreateEntities();
+
+        SetPlayersInitialDestinationPosition();
+    }
+
+    void Simulate(ostream& out, ostream& log)
+    {
+        NextRound();
+
+        // Clear entities' states.
+        for (auto& player : m_Players)
+            player.SetState(Buster::EState::UnknownPosition);
+
+        for (auto& enemy : m_Enemies)
+        {
+            if (enemy.GetState() != Buster::EState::Undefined)
+                enemy.SetState(Buster::EState::UnknownPosition);
+        }
+
+        for (auto& ghost : m_Ghosts)
+        {
+            if (ghost.second.GetState() != Ghost::EState::Busted &&
+                ghost.second.GetState() != Ghost::EState::Undefined)
+            {
+                ghost.second.SetState(Ghost::EState::UnknownPositon);
+            }
+        }
+
+        // Update state of known entities.
+        int entities; // the number of busters and ghosts visible to you
+        cin >> entities; cin.ignore();
+        for (int i = 0; i < entities; ++i)
+        {
+            int entityId; // buster id or ghost id
+            int x;
+            int y; // position of this buster / ghost
+            int entityType; // the team id if it is a buster, -1 if it is a ghost.
+            int state; // For busters: 0=idle, 1=carrying a ghost.
+            int value; // For busters: Ghost id being carried. For ghosts: number of busters attempting to trap this ghost.
+            cin >> entityId >> x >> y >> entityType >> state >> value; cin.ignore();
+
+            if (entityType != -1)
+            {
+                int idx = entityId;
+                if (idx >= m_BustersPerPlayer)
+                    idx -= m_BustersPerPlayer;
+
+                auto& entity = entityType == GetPlayerTeamId() ? m_Players[idx] : m_Enemies[idx];
+
+                entity.SetId(entityId);
+                entity.SetPosition(x, y);
+                switch (state)
+                {
+                default:
+                    //case 0:
+                    //case 3:
+                    entity.SetState(Buster::EState::KnownPosition);
+                    break;
+                case 1:
+                    entity.SetState(Buster::EState::Carring);
+                    {
+                        auto& ghost = m_Ghosts[value];
+
+                        ghost.SetId(value);
+                        ghost.SetState(Ghost::EState::Busted);
+                        ghost.SetStamina(0);
+                    }
+                    break;
+                case 2:
+                    entity.SetState(Buster::EState::Stunned);
+                    break;
+                }
+                entity.SetCarriedId(value);
+            }
+            else
+            {
+                auto& ghost = m_Ghosts[entityId];
+
+                ghost.SetId(entityId);
+                ghost.SetPosition(x, y);
+                ghost.SetState(value == 0 ? Ghost::EState::KnownPosition : Ghost::EState::Busting);
+                ghost.SetStamina(state);
+
+                if (entityId != 0)
+                {
+                    int twinEntityId = entityId % 2 ? entityId + 1 : entityId - 1;
+
+                    auto found = m_Ghosts.find(twinEntityId);
+                    if (found == m_Ghosts.end())
+                    {
+                        auto& twinGhost = m_Ghosts[twinEntityId];
+
+                        twinGhost.SetId(twinEntityId);
+                        twinGhost.SetPosition(MAP_RIGHT - x, MAP_BOTTOM - y);
+                        twinGhost.SetState(Ghost::EState::UnknownPositon);
+                        twinGhost.SetStamina(state);
+                    }
+                }
+            }
+        }
+
+        // Check if Unknown position ghosts are still valid.
+        for (auto& ghost : m_Ghosts)
+        {
+            log << ghost.second.GetId() << ':';
+            switch (ghost.second.GetState())
+            {
+            case Ghost::EState::Undefined:
+                log << '?'; break;
+            case Ghost::EState::UnknownPositon:
+                log << 'U'; break;
+            case Ghost::EState::KnownPosition:
+                log << 'K'; break;
+            case Ghost::EState::Busting:
+                log << 'B'; break;
+            case Ghost::EState::Busted:
+                log << 'X'; break;
+            }
+
+            if (ghost.second.GetState() == Ghost::EState::UnknownPositon)
+            {
+                for (auto& player : m_Players)
+                {
+                    if (Distance(player.GetPosition(), ghost.second.GetPosition()) < FOG_OF_WAR_RADIUS)
+                    {
+                        ghost.second.SetState(Ghost::EState::Undefined);
+                        log << '-';
+                    }
+                }
+            }
+
+            log << ' ';
+        }
+        log << endl;
+
+        for (int i = 0; i < (int)m_Players.size(); ++i)
+        {
+            auto& player = m_Players[i];
+
+            log << (player.CanStun(GetRound()) ? 'y' : 'n');
+            if (player.CanStun(GetRound()))
+            {
+                auto enemy = FindNearestNotStunnedEnemy(player.GetPosition(), m_Enemies);
+                if (enemy)
+                    log << Distance(player.GetPosition(), enemy->GetPosition()) << ' ';
+                if (enemy && Distance(player.GetPosition(), enemy->GetPosition()) <= STUNT_RADIUS)
+                {
+                    auto dist = Distance(player.GetPosition(), enemy->GetPosition());
+                    log << "S " << dist << endl;
+
+                    out << "STUN " << enemy->GetId() << endl;
+
+                    player.SetStunning(GetRound());
+                    enemy->SetState(Buster::EState::Stunned);
+
+                    continue;
+                }
+            }
+
+            if (player.GetState() == Buster::EState::Carring)
+            {
+                auto dist = Distance(player.GetPosition(), GetPlayerBase().GetReturnPosition());
+                log << "R " << dist << endl;
+
+                if (GetPlayerBase().IsPositionInside(player.GetPosition()))
+                {
+                    m_Ghosts[player.GetCarriedId()].SetState(Ghost::EState::Busted);
+                    out << "RELEASE" << endl;
+                }
+                else
+                    out << "MOVE " << GetPlayerBase().GetReturnPosition() << endl;
+
+                continue;
+            }
+            else
+            {
+                //auto ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::Busting, ghosts);
+                //if (!ghost)
+                //    ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::KnownPosition, ghosts);
+                auto ghost = FindNearestGhost(player.GetPosition(), m_Ghosts);
+
+                if (ghost)
+                {
+                    auto dist = Distance(player.GetPosition(), ghost->GetPosition());
+                    log << "B " << dist << '(' << ghost->GetId() << ')' << endl;
+
+                    ghost->SetState(Ghost::EState::Busting);
+
+                    if (dist > MAX_GHOST_BUST_RADIUS)
+                        out << "MOVE " << ghost->GetPosition() << endl;
+                    else if (dist < MIN_GHOST_BUST_RADIUS)
+                    {
+                        Vector dir;
+
+                        if (dist == 0)
+                            dir = Vector(GetPlayerBase().GetPosition()) - Vector(ghost->GetPosition());
+                        else
+                            dir = Vector(player.GetPosition()) - Vector(ghost->GetPosition());
+                        dir = dir.GetNormalized();
+
+                        Point dest_pos = ghost->GetPosition() + dir * (static_cast<float>(MIN_GHOST_BUST_RADIUS));
+
+                        out << "MOVE " << dest_pos << endl;
+                    }
+                    else
+                        out << "BUST " << ghost->GetId() << endl;
+
+                    if (ghost->GetState() == Ghost::EState::UnknownPositon)
+                        player.SetDestPos(ghost->GetPosition());
+
+                    continue;
+                }
+
+                /*
+                ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::UnknownPositon, ghosts);
+                if (ghost)
+                {
+                auto dist = Distance(player.GetPosition(), ghost->GetPosition());
+                log << "UP " << dist << '(' << ghost->GetId() << ')' << endl;
+
+                ghost->SetState(Ghost::EState::Busting);
+
+                out << "MOVE " << ghost->GetPosition() << endl;
+
+                player.SetDestPos(ghost->GetPosition());
+
+                continue;
+                }
+                */
+            }
+
+            if (player.GetDestPos() == player.GetPosition())
+            {
+                int rand_x = rand() % (MAP_RIGHT + 1);
+                rand_x = rand() % (rand_x + 1);
+                int rand_y = rand() % (MAP_BOTTOM + 1);
+                rand_y = rand() % (rand_y + 1);
+
+                if (rand() % 2)
+                    rand_x = MAP_RIGHT - rand_x;
+                else
+                    rand_y = MAP_BOTTOM - rand_y;
+
+                player.SetDestPos(rand_x, rand_y);
+            }
+
+            log << "N" << endl;
+            out << "MOVE " << player.GetDestPos() << endl; // MOVE x y | BUST id | RELEASE
+        }
+    }
+
+    int GetPlayerTeamId() const { return m_PlayerTeamId; }
+    int GetEnemyTeamId() const { return (m_PlayerTeamId + 1) % TEAMS_COUNT; }
+
+    const Base& GetBase(int teamId) const { return m_Bases[teamId]; }
+    const Base& GetPlayerBase() const { return GetBase(GetPlayerTeamId()); }
+    const Base& GetEnemyBase() const { return GetBase(GetEnemyTeamId()); }
+
+    void NextRound() { ++m_RoundNum; }
+    int GetRound() const { return m_RoundNum; }
+
+private:
+    void ReadWorldParameters(istream& in)
+    {
+        in >> m_BustersPerPlayer; in.ignore();
+        in >> m_GhostCount; in.ignore();
+        in >> m_PlayerTeamId; in.ignore();
+
+        assert(m_PlayerTeamId >= 0 && m_PlayerTeamId < TEAMS_COUNT);
+    }
+
+    void CreateEntities()
+    {
+        m_Players.resize(m_BustersPerPlayer);
+        m_Enemies.resize(m_BustersPerPlayer);
+    }
+
+    void SetPlayersInitialDestinationPosition()
+    {
+        for (int i = 0; i < (int)m_Players.size(); ++i)
+        {
+            auto& player = m_Players[i];
+
+            player.SetDestPos(MAP_RIGHT / (m_BustersPerPlayer + 1) * (i + 1), MAP_BOTTOM / 2);
+        }
+    }
+
+    // The amount of busters you control.
+    int m_BustersPerPlayer = 0;
+    // The amount of ghosts on the map.
+    int m_GhostCount = 0; 
+    // If this is 0, your base is on the top left of the map, if it is one, on the bottom right.
+    int m_PlayerTeamId = 0;
+
+
+    static_assert(TEAMS_COUNT == 2, "World implementation assumes that there is only 2 worlds");
+    Base m_Bases[TEAMS_COUNT] = { Base(0), Base(1) };
+
+    vector<Player> m_Players;
+    vector<Buster> m_Enemies;
+    map<int, Ghost> m_Ghosts;
+
+    int m_RoundNum = 0;
+};
+
 Ghost* FindNearestGhost(const Point& position, map<int, Ghost>& ghosts)
 {
     int nearestDist = numeric_limits<int>::max();
@@ -254,7 +548,7 @@ Ghost* FindNearestGhostWithState(const Point& position, Ghost::EState state, map
 {
     int nearestDist = numeric_limits<int>::max();
     Ghost* nearestGhost = nullptr;
-    for (auto& ghost: ghosts)
+    for (auto& ghost : ghosts)
     {
         if (ghost.second.GetState() != state)
             continue;
@@ -292,277 +586,17 @@ Buster* FindNearestNotStunnedEnemy(const Point& position, vector<Buster>& enemie
 }
 
 /**
- * Send your busters out into the fog to trap ghosts and bring them home!
- **/
+* Send your busters out into the fog to trap ghosts and bring them home!
+**/
 int main()
 {
     World world;
 
-    int bustersPerPlayer; // the amount of busters you control
-    cin >> bustersPerPlayer; cin.ignore();
-    int ghostCount; // the amount of ghosts on the map
-    cin >> ghostCount; cin.ignore();
-    int myTeamId; // if this is 0, your base is on the top left of the map, if it is one, on the bottom right
-    cin >> myTeamId; cin.ignore();
-
-    world.SetPlayerTeamId(myTeamId);
-
-    vector<Player> players(bustersPerPlayer);
-    vector<Buster> enemies(bustersPerPlayer);
-    map<int, Ghost> ghosts;
-
-    // Set initial destination positions.
-    for (int i = 0; i < bustersPerPlayer; ++i)
-    {
-        auto& player = players[i];
-
-        player.SetDestPos(MAP_RIGHT / (bustersPerPlayer + 1) * (i + 1), MAP_BOTTOM / 2);
-    }
+    world.Initialize(cin);
 
     // game loop
     while (1)
     {
-        world.NextRound();
-
-        // Clear entities' states.
-        for (auto& player : players)
-            player.SetState(Buster::EState::UnknownPosition);
-
-        for (auto& enemy : enemies)
-        {
-            if (enemy.GetState() != Buster::EState::Undefined)
-                enemy.SetState(Buster::EState::UnknownPosition);
-        }
-
-        for (auto& ghost : ghosts)
-        {
-            if (ghost.second.GetState() != Ghost::EState::Busted &&
-                ghost.second.GetState() != Ghost::EState::Undefined)
-            {
-                ghost.second.SetState(Ghost::EState::UnknownPositon);
-            }
-        }
-
-        // Update state of known entities.
-        int entities; // the number of busters and ghosts visible to you
-        cin >> entities; cin.ignore();
-        for (int i = 0; i < entities; ++i)
-        {
-            int entityId; // buster id or ghost id
-            int x;
-            int y; // position of this buster / ghost
-            int entityType; // the team id if it is a buster, -1 if it is a ghost.
-            int state; // For busters: 0=idle, 1=carrying a ghost.
-            int value; // For busters: Ghost id being carried. For ghosts: number of busters attempting to trap this ghost.
-            cin >> entityId >> x >> y >> entityType >> state >> value; cin.ignore();
-
-            if (entityType != -1)
-            {
-                int idx = entityId;
-                if (idx >= bustersPerPlayer)
-                    idx -= bustersPerPlayer;
-
-                auto& entity = entityType == myTeamId ? players[idx] : enemies[idx];
-
-                entity.SetId(entityId);
-                entity.SetPosition(x, y);
-                switch (state)
-                {
-                default:
-                //case 0:
-                //case 3:
-                    entity.SetState(Buster::EState::KnownPosition);
-                    break;
-                case 1:
-                    entity.SetState(Buster::EState::Carring);
-                    {
-                        auto& ghost = ghosts[value];
-
-                        ghost.SetId(value);
-                        ghost.SetState(Ghost::EState::Busted);
-                        ghost.SetStamina(0);
-                    }
-                    break;
-                case 2:
-                    entity.SetState(Buster::EState::Stunned);
-                    break;
-                }
-                entity.SetCarriedId(value);
-            }
-            else
-            {
-                auto& ghost = ghosts[entityId];
-
-                ghost.SetId(entityId);
-                ghost.SetPosition(x, y);
-                ghost.SetState(value == 0 ? Ghost::EState::KnownPosition : Ghost::EState::Busting);
-                ghost.SetStamina(state);
-
-                if (entityId != 0)
-                {
-                    int twinEntityId = entityId % 2 ? entityId + 1 : entityId - 1;
-
-                    auto found = ghosts.find(twinEntityId);
-                    if (found == ghosts.end())
-                    {
-                        auto& twinGhost = ghosts[twinEntityId];
-
-                        twinGhost.SetId(twinEntityId);
-                        twinGhost.SetPosition(MAP_RIGHT - x, MAP_BOTTOM - y);
-                        twinGhost.SetState(Ghost::EState::UnknownPositon);
-                        twinGhost.SetStamina(state);
-                    }
-                }
-            }
-        }
-
-        // Check if Unknown position ghosts are still valid.
-        for (auto& ghost : ghosts)
-        {
-            cerr << ghost.second.GetId() << ':';
-            switch (ghost.second.GetState())
-            {
-            case Ghost::EState::Undefined:
-                cerr << '?'; break;
-            case Ghost::EState::UnknownPositon:
-                cerr << 'U'; break;
-            case Ghost::EState::KnownPosition:
-                cerr << 'K'; break;
-            case Ghost::EState::Busting:
-                cerr << 'B'; break;
-            case Ghost::EState::Busted:
-                cerr << 'X'; break;
-            }
-
-            if (ghost.second.GetState() == Ghost::EState::UnknownPositon)
-            {
-                for (auto& player : players)
-                {
-                    if (Distance(player.GetPosition(), ghost.second.GetPosition()) < FOG_OF_WAR_RADIUS)
-                    {
-                        ghost.second.SetState(Ghost::EState::Undefined);
-                        cerr << '-';
-                    }
-                }
-            }
-
-            cerr << ' ';
-        }
-        cerr << endl;
-
-        for (int i = 0; i < bustersPerPlayer; ++i)
-        {
-            auto& player = players[i];
-
-            cerr << (player.CanStun(world.GetRound()) ? 'y' : 'n');
-            if (player.CanStun(world.GetRound()))
-            {
-                auto enemy = FindNearestNotStunnedEnemy(player.GetPosition(), enemies);
-                if (enemy)
-                    cerr << Distance(player.GetPosition(), enemy->GetPosition()) << ' ';
-                if (enemy && Distance(player.GetPosition(), enemy->GetPosition()) <= STUNT_RADIUS)
-                {
-                    auto dist = Distance(player.GetPosition(), enemy->GetPosition());
-                    cerr << "S " << dist << endl;
-
-                    cout << "STUN " << enemy->GetId() << endl;
-
-                    player.SetStunning(world.GetRound());
-                    enemy->SetState(Buster::EState::Stunned);
-
-                    continue;
-                }
-            }
-
-            if (player.GetState() == Buster::EState::Carring)
-            {
-                auto dist = Distance(player.GetPosition(), world.GetPlayerBase().GetReturnPosition());
-                cerr << "R " << dist << endl;
-
-                if (world.GetPlayerBase().IsPositionInside(player.GetPosition()))
-                {
-                    ghosts[player.GetCarriedId()].SetState(Ghost::EState::Busted);
-                    cout << "RELEASE" << endl;
-                }
-                else
-                    cout << "MOVE " << world.GetPlayerBase().GetReturnPosition() << endl;
-
-                continue;
-            }
-            else
-            {
-                //auto ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::Busting, ghosts);
-                //if (!ghost)
-                //    ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::KnownPosition, ghosts);
-                auto ghost = FindNearestGhost(player.GetPosition(), ghosts);
-
-                if (ghost)
-                {
-                    auto dist = Distance(player.GetPosition(), ghost->GetPosition());
-                    cerr << "B " << dist << '(' << ghost->GetId() << ')' << endl;
-
-                    ghost->SetState(Ghost::EState::Busting);
-
-                    if (dist > MAX_GHOST_BUST_RADIUS)
-                        cout << "MOVE " << ghost->GetPosition() << endl;
-                    else if (dist < MIN_GHOST_BUST_RADIUS)
-                    {
-                        Vector dir;
-
-                        if (dist == 0)
-                            dir = Vector(world.GetPlayerBase().GetPosition()) - Vector(ghost->GetPosition());
-                        else
-                            dir = Vector(player.GetPosition()) - Vector(ghost->GetPosition());
-                        dir = dir.GetNormalized();
-
-                        Point dest_pos = ghost->GetPosition() + dir * (static_cast<float>(MIN_GHOST_BUST_RADIUS));
-
-                        cout << "MOVE " << dest_pos << endl;
-                    }
-                    else
-                        cout << "BUST " << ghost->GetId() << endl;
-
-                    if (ghost->GetState() == Ghost::EState::UnknownPositon)
-                        player.SetDestPos(ghost->GetPosition());
-
-                    continue;
-                }
-
-                /*
-                ghost = FindNearestGhostWithState(player.GetPosition(), Ghost::EState::UnknownPositon, ghosts);
-                if (ghost)
-                {
-                    auto dist = Distance(player.GetPosition(), ghost->GetPosition());
-                    cerr << "UP " << dist << '(' << ghost->GetId() << ')' << endl;
-
-                    ghost->SetState(Ghost::EState::Busting);
-
-                    cout << "MOVE " << ghost->GetPosition() << endl;
-
-                    player.SetDestPos(ghost->GetPosition());
-
-                    continue;
-                }
-                */
-            }
-
-            if (player.GetDestPos() == player.GetPosition())
-            {
-                int rand_x = rand() % (MAP_RIGHT + 1);
-                rand_x = rand() % (rand_x + 1);
-                int rand_y = rand() % (MAP_BOTTOM + 1);
-                rand_y = rand() % (rand_y + 1);
-
-                if (rand() % 2)
-                    rand_x = MAP_RIGHT - rand_x;
-                else
-                    rand_y = MAP_BOTTOM - rand_y;
-
-                player.SetDestPos(rand_x, rand_y);
-            }
-
-            cerr << "N" << endl;
-            cout << "MOVE " << player.GetDestPos() << endl; // MOVE x y | BUST id | RELEASE
-        }
+        world.Simulate(cout, cerr);
     }
 }
