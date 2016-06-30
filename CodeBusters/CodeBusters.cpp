@@ -42,18 +42,13 @@ struct Point
 
     void Set(int x, int y) { m_X = x; m_Y = y; }
 
+    bool operator==(const Point& right) const { return m_X == right.m_X && m_Y == right.m_Y; }
+    friend std::ostream& operator<< (std::ostream& stream, const Point& point) { return stream << point.m_X << " " << point.m_Y; }
+
     Point operator+(const Point& right) const { return Point(this->m_X + right.m_X, this->m_Y + right.m_Y); }
     Point operator-(const Point& right) const { return Point(this->m_X - right.m_X, this->m_Y - right.m_Y); }
-
-    bool operator==(const Point& right)
-    {
-        return m_X == right.m_X && m_Y == right.m_Y;
-    }
-
-    friend std::ostream& operator<< (std::ostream& stream, const Point& point)
-    {
-        return stream << point.m_X << " " << point.m_Y;
-    }
+    Point& operator+=(const Point& right) { m_X += right.m_X; m_Y += right.m_Y; return *this; }
+    Point& operator-=(const Point& right) { m_X -= right.m_X; m_Y -= right.m_Y; return *this; }
 
     int m_X;
     int m_Y;
@@ -69,13 +64,20 @@ struct Vector
 
     operator Point() const { return Point(static_cast<int>(m_X + 0.5f), static_cast<int>(m_Y + 0.5f)); }
 
+    bool operator==(const Vector& right) const { return m_X == right.m_X && m_Y == right.m_Y; }
+    friend std::ostream& operator<< (std::ostream& stream, const Vector& point) { return stream << point.m_X << " " << point.m_Y; }
+
+    Vector operator+(const Vector& right) const { return Vector(m_X + right.m_X, m_Y + right.m_Y); }
+    Vector operator-(const Vector& right) const { return Vector(m_X - right.m_X, m_Y - right.m_Y); }
+    Vector& operator+=(const Vector& right) { m_X += right.m_X; m_Y += right.m_Y; return *this; }
+    Vector& operator-=(const Vector& right) { m_X -= right.m_X; m_Y -= right.m_Y; return *this; }
+
     friend Vector operator*(const Vector& left, float right) { return Vector(left.m_X * right, left.m_Y * right); }
     friend Vector operator*(float left, const Vector& right) { return Vector(left * right.m_X, left * right.m_Y); }
     friend Vector operator/(const Vector& left, float right) { return Vector(left.m_X / right, left.m_Y / right); }
     friend Vector operator/(float left, const Vector& right) { return Vector(left / right.m_X, left / right.m_Y); }
-
-    Vector operator+(const Vector& right) const { return Vector(this->m_X + right.m_X, this->m_Y + right.m_Y); }
-    Vector operator-(const Vector& right) const { return Vector(this->m_X - right.m_X, this->m_Y - right.m_Y); }
+    Vector& operator*=(float right) { m_X *= right; m_Y *= right; return *this; }
+    Vector& operator/=(float right) { m_X /= right; m_Y /= right; return *this; }
 
     float GetLength() const
     {
