@@ -236,8 +236,12 @@ Point Map::GetRandomDestination(int round, const Point& prevDestination) const
     Cell tempGrid[NUM_X * NUM_Y];
     copy(begin(m_Grid), end(m_Grid), tempGrid);
 
-    sort(begin(tempGrid), end(tempGrid), [](const Cell& left, const Cell& right)
+    sort(begin(tempGrid), end(tempGrid), [&](const Cell& left, const Cell& right)
     {
+        if (left.m_LastVisitedRound == right.m_LastVisitedRound)
+        {
+            return Distance(prevDestination, left.m_Position) < Distance(prevDestination, right.m_Position);
+        }
         return left.m_LastVisitedRound < right.m_LastVisitedRound;
 
     });
@@ -928,8 +932,8 @@ void World::SimulateNextMove(ostream& out, ostream& log)
     int nearestGhostDistance = numeric_limits<int>::max();
     for (auto& ghost : m_Ghosts)
     {
-        if (ghost.second.GetState() == Ghost::EState::Busted/* ||
-            ghost.second.GetState() == Ghost::EState::Carried*/)
+        if (ghost.second.GetState() == Ghost::EState::Busted ||
+            ghost.second.GetState() == Ghost::EState::Carried)
             continue;
 
         if (ghost.second.GetLastSeenRound() != GetRound() - 1)
@@ -959,9 +963,9 @@ void World::SimulateNextMove(ostream& out, ostream& log)
 
         int dist = nearestPlayerDistance;
         if (ghost.second.GetStamina() > 0)
-            dist += MOVE_DISTANCE * ghost.second.GetStamina();
+            dist += MOVE_DISTANCE * ghost.second.GetStamina() / 10;
         else
-            dist += MOVE_DISTANCE * 40;
+            dist += MOVE_DISTANCE * 40 / 10;
 
         if (dist < nearestGhostDistance)
         {
