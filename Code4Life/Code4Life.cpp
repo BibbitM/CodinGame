@@ -5,6 +5,10 @@
 
 using namespace std;
 
+static const string targetDiagnosis = "DIAGNOSIS";
+static const string targetMolecules = "MOLECULES";
+static const string targetLaboratory = "LABORATORY";
+
 struct playerStuct
 {
 	string target;
@@ -20,6 +24,10 @@ struct playerStuct
 	int expertiseC;
 	int expertiseD;
 	int expertiseE;
+
+	bool isInDiagnosis() const { return target == targetDiagnosis; }
+	bool isInMolecules() const { return target == targetMolecules; }
+	bool isInLaboratory() const { return target == targetLaboratory; }
 };
 
 ostream& operator << (ostream& out, const playerStuct& player)
@@ -107,9 +115,21 @@ int main()
 			cerr << samples[i] << endl;
 		}
 
-		// Write an action using cout. DON'T FORGET THE "<< endl"
-		// To debug: cerr << "Debug messages..." << endl;
-
-		cout << "GOTO DIAGNOSIS" << endl;
+		if (player.isInDiagnosis())
+		{
+			cout << "GOTO " << targetMolecules << endl;
+		}
+		else if (player.isInMolecules())
+		{
+			cout << "GOTO " << targetLaboratory << endl;
+		}
+		else if (player.isInLaboratory())
+		{
+			cout << "GOTO " << targetDiagnosis << endl;
+		}
+		else // START_POS
+		{
+			cout << "GOTO " << targetDiagnosis << endl;
+		}
 	}
 }
