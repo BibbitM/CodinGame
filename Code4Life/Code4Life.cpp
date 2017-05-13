@@ -48,6 +48,16 @@ struct myPlayerStruct : playerStruct
 ostream& operator << (ostream& out, const playerStruct& player);
 istream& operator >> (istream& input, playerStruct& player);
 
+struct suppliesStruct
+{
+	int available[(int)Mol::Count];
+
+	bool isAvaiable(int molecule) const { return available[molecule] > 0; }
+};
+
+ostream& operator << (ostream& out, const suppliesStruct& supplies);
+istream& operator >> (istream& input, suppliesStruct& supplies);
+
 struct sampleStruct
 {
 	int sampleId;
@@ -114,6 +124,8 @@ namespace cmd
 	void goToLaboratory() { goTo(targetLaboratory); }
 	void goToSamples() { goTo(targetSamples); }
 
+	void wait() { cout << "WAIT" << endl; }
+
 	void connectId(int id) { cout << "CONNECT " << id << endl; }
 	void connectType(int type) { cout << "CONNECT " << (char)('A' + type) << endl; }
 	void connectRank(int rank) { cout << "CONNECT " << rank << endl; }
@@ -139,26 +151,26 @@ int main()
 	myPlayerStruct player{};
 	playerStruct enemy{};
 
-	samplesCollectionStruct collection;
+	samplesCollectionStruct collection{};
+
+	suppliesStruct supplies{};
 
 	// game loop
 	while (1)
 	{
 		cin >> player; cin.ignore();
-		//cerr << player << endl;
 		cin >> enemy; cin.ignore();
-		//cerr << enemy << endl;
 
-		int availableA;
-		int availableB;
-		int availableC;
-		int availableD;
-		int availableE;
-		cin >> availableA >> availableB >> availableC >> availableD >> availableE; cin.ignore();
-		//cerr << availableA << " " << availableB << " " << availableC << " " << availableD << " " << availableE << endl;
+		cin >> supplies; cin.ignore();
 
 		cin >> collection; cin.ignore();
-		//cerr << collection << endl;
+
+		/*
+		cerr << player << endl;
+		cerr << enemy << endl;
+		cerr << supplies << endl;
+		cerr << collection << endl;
+		//*/
 
 		// Collect sample.
 		vector<sampleStruct> samplesOfPlayer;
@@ -219,14 +231,19 @@ int main()
 			}
 			else if (player.isInMolecules())
 			{
+				bool collectedMolecule = false;
 				for (int i = 0; i < (int)Mol::Count; ++i)
 				{
-					if (!sampleToCollect.hasMolecules(player, i))
+					if (!sampleToCollect.hasMolecules(player, i) && supplies.isAvaiable(i))
 					{
 						cmd::connectType(i);
+						collectedMolecule = true;
 						break;
 					}
 				}
+
+				if (!collectedMolecule)
+					cmd::wait();
 			}
 			else
 			{
@@ -253,6 +270,20 @@ istream& operator >> (istream& input, playerStruct& player)
 		input >> player.storage[i];
 	for (int i = 0; i < (int)Mol::Count; ++i)
 		input >> player.expertise[i];
+	return input;
+}
+
+
+ostream& operator << (ostream& out, const suppliesStruct& supplies)
+{
+	for (int i = 0; i < (int)Mol::Count; ++i)
+		out << " " << supplies.available[i];
+	return out;
+}
+istream& operator >> (istream& input, suppliesStruct& supplies)
+{
+	for (int i = 0; i < (int)Mol::Count; ++i)
+		input >> supplies.available[i];
 	return input;
 }
 
