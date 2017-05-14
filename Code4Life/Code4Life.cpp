@@ -165,7 +165,7 @@ int main()
 
 		cin >> collection; cin.ignore();
 
-		/*
+		//*
 		cerr << player << endl;
 		cerr << enemy << endl;
 		cerr << supplies << endl;
@@ -277,7 +277,11 @@ istream& operator >> (istream& input, playerStruct& player)
 ostream& operator << (ostream& out, const suppliesStruct& supplies)
 {
 	for (int i = 0; i < (int)Mol::Count; ++i)
-		out << " " << supplies.available[i];
+	{
+		if (i > 0)
+			out << " ";
+		out << supplies.available[i];
+	}
 	return out;
 }
 istream& operator >> (istream& input, suppliesStruct& supplies)
