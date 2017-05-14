@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <iterator>
 #include <cassert>
+#include <numeric>
 
 using namespace std;
 
@@ -12,6 +13,9 @@ static const string targetSamples = "SAMPLES";
 static const string targetDiagnosis = "DIAGNOSIS";
 static const string targetMolecules = "MOLECULES";
 static const string targetLaboratory = "LABORATORY";
+
+static const int maxSamplesPerPlayer = 3;
+static const int maxMoleculesPerPlayer = 10;
 
 enum class eMol
 {
@@ -22,6 +26,8 @@ enum class eMol
 	E,
 	count
 };
+
+int getMoleculeFromString(const string& moleculeName);
 
 enum class eArea
 {
@@ -49,6 +55,16 @@ struct sPlayer
 	int storage[(int)eMol::count];
 	int expertise[(int)eMol::count];
 
+	int getMoleculeNum(int molecule) const { return storage[molecule] + expertise[molecule]; }
+	int getStorageMoleculesNum() const
+	{
+		return accumulate(begin(storage), end(storage), 0);
+	}
+	int getExpretiseMoleculesNum() const
+	{
+		return accumulate(begin(expertise), end(expertise), 0);
+	}
+
 	bool isInSamples() const { return target == targetSamples; }
 	bool isInDiagnosis() const { return target == targetDiagnosis; }
 	bool isInMolecules() const { return target == targetMolecules; }
@@ -71,13 +87,13 @@ string toString(eState state)
 {
 	switch (state)
 	{
-	case eState::start:				return "START";
-	case eState::collectSamples:	return "COLLECT_SAMPLES";
-	case eState::analizeSamples:	return "ANALIZE_SAMPLES";
-	case eState::chooseSamples:		return "CHOOSE_SAMPLES";
-	case eState::gatherMolecules:	return "GATHER_MOLECULES";
-	case eState::returnSamples:		return "RETURN_SAMPLES";
-	case eState::produceMedicines:	return "PRODUCE_MEDICINES";
+	case eState::start:				return "Start";
+	case eState::collectSamples:	return "Collect samples";
+	case eState::analizeSamples:	return "Analize samples";
+	case eState::chooseSamples:		return "Choose samples";
+	case eState::gatherMolecules:	return "Gather molecules";
+	case eState::returnSamples:		return "Return samples";
+	case eState::produceMedicines:	return "Produce medicines";
 	default: return "";
 	}
 }
@@ -96,6 +112,8 @@ struct sLocalPlayer : sPlayer
 	eState state;
 	bool shouldLog;
 
+	string message;
+
 	sLocalPlayer() : state(eState::start), shouldLog(false) { }
 
 	void update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
@@ -113,6 +131,31 @@ struct sLocalPlayer : sPlayer
 		if (shouldLog)
 			cerr << "Set state " << newState << " from " << state << "." << endl;
 		state = newState;
+	}
+
+	string getMessage() const
+	{
+		if (!shouldLog)
+			return string();
+
+		string outMessage = toString(state);
+		if (!message.empty())
+		{
+			outMessage += " ";
+			outMessage += message;
+		}
+
+		return outMessage;
+	}
+	void addMessage(const string& msg)
+	{
+		if (message.empty())
+			message = msg;
+		else
+		{
+			message += " ";
+			message += msg;
+		}
 	}
 };
 
@@ -182,6 +225,11 @@ istream& operator >> (istream& input, sSample& sample);
 struct sSamplesCollection
 {
 	vector<sSample> samples;
+
+	int getNumSamplesCarriedBy(int carriedBy) const;
+	sSamplesCollection getSamplesCarriedBy(int carriedBy) const;
+	sSamplesCollection getSamplesToAnalize() const;
+	sSamplesCollection getDiagnosedSamples() const;
 };
 
 ostream& operator << (ostream& out, const sSamplesCollection& collection);
@@ -189,17 +237,19 @@ istream& operator >> (istream& input, sSamplesCollection& collection);
 
 namespace cmd
 {
-	void goTo(const string& target) { cout << "GOTO " << target << endl; }
-	void goToDiagnosis() { goTo(targetDiagnosis); }
-	void goToMolecules() { goTo(targetMolecules); }
-	void goToLaboratory() { goTo(targetLaboratory); }
-	void goToSamples() { goTo(targetSamples); }
+	void send(const string& message = string()) {  if (!message.empty()) cout << " " << message; cout << endl; }
+	void goTo(const string& target, const string& message = string()) { cout << "GOTO " << target; send(message); }
+	void goToDiagnosis(const string& message = string()) { goTo(targetDiagnosis, message); }
+	void goToMolecules(const string& message = string()) { goTo(targetMolecules, message); }
+	void goToLaboratory(const string& message = string()) { goTo(targetLaboratory, message); }
+	void goToSamples(const string& message = string()) { goTo(targetSamples, message); }
 
-	void wait() { cout << "WAIT" << endl; }
+	void wait(const string& message = string()) { cout << "WAIT"; send(message);	}
+	void null(const string& message = string()) { send(message); }
 
-	void connectId(int id) { cout << "CONNECT " << id << endl; }
-	void connectType(int type) { cout << "CONNECT " << (char)('A' + type) << endl; }
-	void connectRank(int rank) { cout << "CONNECT " << rank << endl; }
+	void connectId(int id, const string& message = string()) { cout << "CONNECT " << id; send(message); }
+	void connectType(int type, const string& message = string()) { cout << "CONNECT " << (char)('A' + type); send(message); }
+	void connectRank(int rank, const string& message = string()) { cout << "CONNECT " << rank; send(message); }
 }
 
 /**
@@ -245,7 +295,7 @@ int main()
 
 		cin >> collection; cin.ignore();
 
-		//*
+		/*
 		cerr << player << endl;
 		cerr << enemy << endl;
 		cerr << supplies << endl;
@@ -395,6 +445,59 @@ istream& operator >> (istream& input, sSample& sample)
 }
 
 
+int sSamplesCollection::getNumSamplesCarriedBy(int carriedBy) const
+{
+	int numSamples = 0;
+	for (const auto& s : samples)
+	{
+		if (s.carriedBy == carriedBy)
+			++numSamples;
+	}
+	return numSamples;
+}
+
+sSamplesCollection sSamplesCollection::getSamplesCarriedBy(int carriedBy) const
+{
+	sSamplesCollection outCollection{};
+	outCollection.samples.reserve(samples.size());
+
+	for (const auto& s : samples)
+	{
+		if (s.carriedBy == carriedBy)
+			outCollection.samples.push_back(s);
+	}
+
+	return outCollection;
+}
+
+sSamplesCollection sSamplesCollection::getSamplesToAnalize() const
+{
+	sSamplesCollection outCollection{};
+	outCollection.samples.reserve(samples.size());
+
+	for (const auto& s : samples)
+	{
+		if (!s.isDiagnosed())
+			outCollection.samples.push_back(s);
+	}
+
+	return outCollection;
+}
+
+sSamplesCollection sSamplesCollection::getDiagnosedSamples() const
+{
+	sSamplesCollection outCollection{};
+	outCollection.samples.reserve(samples.size());
+
+	for (const auto& s : samples)
+	{
+		if (s.isDiagnosed())
+			outCollection.samples.push_back(s);
+	}
+
+	return outCollection;
+}
+
 ostream& operator << (ostream& out, const sSamplesCollection& collection)
 {
 	out << collection.samples.size();
@@ -422,6 +525,22 @@ istream& operator >> (istream& input, sSamplesCollection& collection)
 
 	return input;
 }
+
+int getMoleculeFromString(const string& moleculeName)
+{
+	if (moleculeName == "A")
+		return (int)eMol::A;
+	if (moleculeName == "B")
+		return (int)eMol::B;
+	if (moleculeName == "C")
+		return (int)eMol::C;
+	if (moleculeName == "D")
+		return (int)eMol::D;
+	if (moleculeName == "E")
+		return (int)eMol::E;
+	return -1;
+}
+
 
 string getAreaName(eArea area)
 {
@@ -461,9 +580,11 @@ void sLocalPlayer::update(const sPlayer& enemy, const sSamplesCollection& collec
 
 bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
+	message.clear();
+
 	if (eta > 0)
 	{
-		cmd::wait();
+		cmd::null(getMessage());
 		return true;
 	}
 
@@ -484,49 +605,209 @@ bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& c
 	case eState::produceMedicines:
 		return updateProduceMedicines(enemy, collection, supplies);
 	default:
-		cmd::wait();
+		cmd::wait("ERROR");
 		return true;
 	}
 }
 
 bool sLocalPlayer::updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
-	cmd::wait();
-	return true;
+	setState(eState::collectSamples);
+	return false;
 }
 
 bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
-	cmd::wait();
+	const int mySamplesNum = collection.getNumSamplesCarriedBy(0);
+	if (mySamplesNum >= maxSamplesPerPlayer)
+	{
+		setState(eState::analizeSamples);
+		return false;
+	}
+
+	if (isInSamples())
+	{
+		int sampleRank = 1;
+		const int totalExpertise = getExpretiseMoleculesNum();
+		if (totalExpertise >= rankMoleculeCosts[2])
+			sampleRank = 2;
+		if (totalExpertise >= rankMoleculeCosts[3])
+			sampleRank = 3;
+
+		cmd::connectRank(sampleRank, getMessage());
+		return true;
+	}
+
+	cmd::goToSamples(getMessage());
 	return true;
 }
 
 bool sLocalPlayer::updateAnalizeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
-	cmd::wait();
+	auto mySamplesToAnalize = collection.getSamplesCarriedBy(0).getSamplesToAnalize();
+	if (mySamplesToAnalize.samples.empty())
+	{
+		setState(eState::chooseSamples);
+		return false;
+	}
+
+	if (isInDiagnosis())
+	{
+		cmd::connectId(mySamplesToAnalize.samples[0].sampleId, getMessage());
+		return true;
+	}
+
+	cmd::goToDiagnosis(getMessage());
 	return true;
 }
 
 bool sLocalPlayer::updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
-	cmd::wait();
-	return true;
+	// TODO
+	setState(eState::gatherMolecules);
+	return false;
 }
 
 bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
-	cmd::wait();
+	auto myDiagnosedSamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples();
+
+	int wantedType = -1;
+
+	int usedStorage[(int)eMol::count] = {};
+	int gainExpertise[(int)eMol::count] = {};
+
+	for (const auto& sample : myDiagnosedSamples.samples)
+	{
+		bool missingSupplies = false;
+		int totalMissingSupplies = 0;
+		for (int i = 0; i < (int)eMol::count; ++i)
+		{
+			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) - usedStorage[i] + gainExpertise[i]), 0);
+			totalMissingSupplies += moleculeToGather;
+			if (moleculeToGather > supplies.available[i])
+			{
+				missingSupplies = true;
+				break;
+			}
+		}
+
+		if (missingSupplies)
+		{
+			addMessage("missingSupplies");
+			continue;
+		}
+		if (getStorageMoleculesNum() + totalMissingSupplies > maxMoleculesPerPlayer)
+		{
+			addMessage("toMuchTotal");
+			continue;
+		}
+
+		for (int i = 0; i < (int)eMol::count; ++i)
+		{
+			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) - usedStorage[i] + gainExpertise[i]), 0);
+			if (moleculeToGather > 0)
+			{
+				wantedType = i;
+				break;
+			}
+		}
+
+		// We have all molecules.
+		if (wantedType == -1)
+		{
+			addMessage("weHaveAll");
+			for (int i = 0; i < (int)eMol::count; ++i)
+			{
+				usedStorage[i] += max(sample.cost[i] - expertise[i] - gainExpertise[i], 0);
+			}
+
+			int extertiseInMolecule = getMoleculeFromString(sample.expertiseGain);
+			if (extertiseInMolecule >= 0 && extertiseInMolecule < (int)eMol::count)
+				++gainExpertise[extertiseInMolecule];
+
+			continue;
+		}
+
+		break;
+	}
+
+	if (wantedType == -1 || getStorageMoleculesNum() >= maxMoleculesPerPlayer)
+	{
+		setState(eState::produceMedicines);
+		return false;
+	}
+
+	if (isInMolecules())
+	{
+		cmd::connectType(wantedType, getMessage());
+		return true;
+	}
+
+	cmd::goToMolecules(getMessage());
 	return true;
 }
 
 bool sLocalPlayer::updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
-	cmd::wait();
+	auto mySamples = collection.getSamplesCarriedBy(0);
+	if (mySamples.samples.empty())
+	{
+		setState(eState::collectSamples);
+		return false;
+	}
+
+	if (isInDiagnosis())
+	{
+		cmd::connectId(mySamples.samples[0].sampleId, getMessage());
+		return true;
+	}
+
+	cmd::goToDiagnosis(getMessage());
 	return true;
 }
 
 bool sLocalPlayer::updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
-	cmd::wait();
+	auto myDiagnosedSamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples();
+
+	int toProduceId = -1;
+
+	for (const auto& sample : myDiagnosedSamples.samples)
+	{
+		bool missingSupplies = false;
+		for (int i = 0; i < (int)eMol::count; ++i)
+		{
+			const int moleculeToGather = max(sample.cost[i] - getMoleculeNum(i), 0);
+			if (moleculeToGather > 0)
+			{
+				missingSupplies = true;
+				break;
+			}
+		}
+
+		if (missingSupplies)
+			continue;
+
+		toProduceId = sample.sampleId;
+		break;
+	}
+
+	if (toProduceId == -1)
+	{
+		if (collection.getNumSamplesCarriedBy(0) == maxSamplesPerPlayer)
+			setState(eState::returnSamples);
+		else
+			setState(eState::collectSamples);
+		return false;
+	}
+
+	if (isInLaboratory())
+	{
+		cmd::connectId(toProduceId, getMessage());
+		return true;
+	}
+
+	cmd::goToLaboratory(getMessage());
 	return true;
 }
