@@ -55,13 +55,67 @@ struct sPlayer
 	bool isInLaboratory() const { return target == targetLaboratory; }
 };
 
+
+enum class eState
+{
+	start,
+	collectSamples,
+	analizeSamples,
+	chooseSamples,
+	gatherMolecules,
+	returnSamples,
+	produceMedicines,
+};
+
+string toString(eState state)
+{
+	switch (state)
+	{
+	case eState::start:				return "START";
+	case eState::collectSamples:	return "COLLECT_SAMPLES";
+	case eState::analizeSamples:	return "ANALIZE_SAMPLES";
+	case eState::chooseSamples:		return "CHOOSE_SAMPLES";
+	case eState::gatherMolecules:	return "GATHER_MOLECULES";
+	case eState::returnSamples:		return "RETURN_SAMPLES";
+	case eState::produceMedicines:	return "PRODUCE_MEDICINES";
+	default: return "";
+	}
+}
+
+ostream& operator << (ostream& out, eState state)
+{
+	out << toString(state);
+	return out;
+}
+
+struct sSamplesCollection;
+struct sSupplies;
+
 struct sLocalPlayer : sPlayer
 {
-	int choosenSample;
+	eState state;
+	bool shouldLog;
 
-	sLocalPlayer() : choosenSample(-1) { }
+	sLocalPlayer() : state(eState::start), shouldLog(false) { }
+
+	void update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateAnalizeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+
+	void setState(eState newState)
+	{
+		if (shouldLog)
+			cerr << "Set state " << newState << " from " << state << "." << endl;
+		state = newState;
+	}
 };
-  
+
 ostream& operator << (ostream& out, const sPlayer& player);
 istream& operator >> (istream& input, sPlayer& player);
 
@@ -196,84 +250,91 @@ int main()
 		cerr << enemy << endl;
 		cerr << supplies << endl;
 		cerr << collection << endl;
+		player.shouldLog = true;
 		//*/
 
-		// Collect sample.
-		vector<sSample> samplesOfPlayer;
-		copy_if(collection.samples.begin(), collection.samples.end(), back_inserter(samplesOfPlayer), [](const sSample& sample) { return sample.carriedBy == 0; });
-
-		if (samplesOfPlayer.empty())
-		{
-			collection.samples.erase(remove_if(collection.samples.begin(), collection.samples.end(), [](const sSample& sample) { return sample.carriedBy != -1; }), collection.samples.end());
-			sort(collection.samples.begin(), collection.samples.end(), [&player](const sSample& first, const sSample& second)
-			{
-				return first.getCost(player) > second.getCost(player);
-			});
-
-			if (player.isInDiagnosis())
-			{
-				if (!collection.samples.empty())
-					cmd::connectId(collection.samples[0].sampleId);
-				else
-					cmd::goToSamples();
-			}
-			else if (player.isInSamples())
-			{
-				if (collection.samples.size() >= 3)
-					cmd::goToDiagnosis();
-				else
-				{
-					cmd::connectRank(2);
-				}
-			}
-			else
-			{
-				if (!collection.samples.empty())
-					cmd::goToDiagnosis();
-				else
-					cmd::goToSamples();
-			}
-		}
+		bool update = true;
+		if (update)
+			player.update(enemy, collection, supplies);
 		else
 		{
-			const auto& sampleToCollect = samplesOfPlayer[0];
-			if (!sampleToCollect.isDiagnosed())
+			// Collect sample.
+			vector<sSample> samplesOfPlayer;
+			copy_if(collection.samples.begin(), collection.samples.end(), back_inserter(samplesOfPlayer), [](const sSample& sample) { return sample.carriedBy == 0; });
+
+			if (samplesOfPlayer.empty())
 			{
+				collection.samples.erase(remove_if(collection.samples.begin(), collection.samples.end(), [](const sSample& sample) { return sample.carriedBy != -1; }), collection.samples.end());
+				sort(collection.samples.begin(), collection.samples.end(), [&player](const sSample& first, const sSample& second)
+				{
+					return first.getCost(player) > second.getCost(player);
+				});
+
 				if (player.isInDiagnosis())
-					cmd::connectId(sampleToCollect.sampleId);
-				else
-					cmd::goToDiagnosis();
-			}
-			else if (sampleToCollect.hasAllMolecules(player))
-			{
-				if (player.isInLaboratory())
 				{
-					cmd::connectId(sampleToCollect.sampleId);
+					if (!collection.samples.empty())
+						cmd::connectId(collection.samples[0].sampleId);
+					else
+						cmd::goToSamples();
 				}
-				else
+				else if (player.isInSamples())
 				{
-					cmd::goToLaboratory();
-				}
-			}
-			else if (player.isInMolecules())
-			{
-				bool collectedMolecule = false;
-				for (int i = 0; i < (int)eMol::count; ++i)
-				{
-					if (!sampleToCollect.hasMolecules(player, i) && supplies.isAvaiable(i))
+					if (collection.samples.size() >= 3)
+						cmd::goToDiagnosis();
+					else
 					{
-						cmd::connectType(i);
-						collectedMolecule = true;
-						break;
+						cmd::connectRank(2);
 					}
 				}
-
-				if (!collectedMolecule)
-					cmd::wait();
+				else
+				{
+					if (!collection.samples.empty())
+						cmd::goToDiagnosis();
+					else
+						cmd::goToSamples();
+				}
 			}
 			else
 			{
-				cmd::goToMolecules();
+				const auto& sampleToCollect = samplesOfPlayer[0];
+				if (!sampleToCollect.isDiagnosed())
+				{
+					if (player.isInDiagnosis())
+						cmd::connectId(sampleToCollect.sampleId);
+					else
+						cmd::goToDiagnosis();
+				}
+				else if (sampleToCollect.hasAllMolecules(player))
+				{
+					if (player.isInLaboratory())
+					{
+						cmd::connectId(sampleToCollect.sampleId);
+					}
+					else
+					{
+						cmd::goToLaboratory();
+					}
+				}
+				else if (player.isInMolecules())
+				{
+					bool collectedMolecule = false;
+					for (int i = 0; i < (int)eMol::count; ++i)
+					{
+						if (!sampleToCollect.hasMolecules(player, i) && supplies.isAvaiable(i))
+						{
+							cmd::connectType(i);
+							collectedMolecule = true;
+							break;
+						}
+					}
+
+					if (!collectedMolecule)
+						cmd::wait();
+				}
+				else
+				{
+					cmd::goToMolecules();
+				}
 			}
 		}
 	}
@@ -389,4 +450,83 @@ int getAreaMoveCost(eArea start, eArea end)
 	if (start != eArea::count && end != eArea::count)
 		return areasMoveCost[(int)start][(int)end];
 	return 0;
+}
+
+
+void sLocalPlayer::update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	while (!updateState(enemy, collection, supplies))
+		continue;
+}
+
+bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	if (eta > 0)
+	{
+		cmd::wait();
+		return true;
+	}
+
+	switch (state)
+	{
+	case eState::start:
+		return updateStart(enemy, collection, supplies);
+	case eState::collectSamples:
+		return updateCollectSamples(enemy, collection, supplies);
+	case eState::analizeSamples:
+		return updateAnalizeSamples(enemy, collection, supplies);
+	case eState::chooseSamples:
+		return updateChooseSamples(enemy, collection, supplies);
+	case eState::gatherMolecules:
+		return updateGatherMolecules(enemy, collection, supplies);
+	case eState::returnSamples:
+		return updateReturnSamples(enemy, collection, supplies);
+	case eState::produceMedicines:
+		return updateProduceMedicines(enemy, collection, supplies);
+	default:
+		cmd::wait();
+		return true;
+	}
+}
+
+bool sLocalPlayer::updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	cmd::wait();
+	return true;
+}
+
+bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	cmd::wait();
+	return true;
+}
+
+bool sLocalPlayer::updateAnalizeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	cmd::wait();
+	return true;
+}
+
+bool sLocalPlayer::updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	cmd::wait();
+	return true;
+}
+
+bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	cmd::wait();
+	return true;
+}
+
+bool sLocalPlayer::updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	cmd::wait();
+	return true;
+}
+
+bool sLocalPlayer::updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+{
+	cmd::wait();
+	return true;
 }
