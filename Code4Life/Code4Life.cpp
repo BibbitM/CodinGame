@@ -46,7 +46,8 @@ int getAreaMoveCost(eArea start, eArea end);
 float rankHealthPoints[4] = { 0.0f, 2.125f, 18.62068966f, 40.f };
 float rankHealthPointsMin[4] = { 0.0f,  1.f, 10.f, 30.f };
 float rankHealthPointsMax[4] = { 0.0f, 10.f, 30.f, 50.f };
-int rankMoleculeCosts[4] = { 0, 5, 8, 14 };
+int rankMinMoleculeCosts[4] = { 0, 3, 5,  7 };
+int rankMaxMoleculeCosts[4] = { 0, 5, 8, 14 };
 
 struct sPlayer
 {
@@ -647,10 +648,10 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	if (isInSamples())
 	{
 		int sampleRank = 1;
-		const int totalExpertise = getExpretiseMoleculesNum();
-		if (totalExpertise >= rankMoleculeCosts[2])
+		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 3;
+		if (totalExpertise >= rankMinMoleculeCosts[2])
 			sampleRank = 2;
-		if (totalExpertise >= rankMoleculeCosts[3])
+		if (totalExpertise >= rankMaxMoleculeCosts[3])
 			sampleRank = 3;
 
 		cmd::connectRank(sampleRank, getMessage());
