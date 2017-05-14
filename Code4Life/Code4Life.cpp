@@ -459,7 +459,7 @@ void sSamplesCollection::sortByHealth()
 		float secondHealth = second.isDiagnosed() ? (float)second.health : rankHealthPoints[second.rank];
 
 		if (firstHealth == secondHealth)
-			return first.sampleId > second.sampleId;
+			return first.sampleId < second.sampleId;
 
 		return firstHealth > secondHealth;
 	});
