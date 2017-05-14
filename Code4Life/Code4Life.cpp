@@ -13,7 +13,7 @@ static const string targetDiagnosis = "DIAGNOSIS";
 static const string targetMolecules = "MOLECULES";
 static const string targetLaboratory = "LABORATORY";
 
-enum class mol
+enum class eMol
 {
 	A,
 	B,
@@ -23,7 +23,7 @@ enum class mol
 	count
 };
 
-enum class areas
+enum class eArea
 {
 	start,
 	samples,
@@ -33,21 +33,21 @@ enum class areas
 	count
 };
 
-string getAreaName(areas a);
-int getAreaMoveCost(areas start, areas end);
+string getAreaName(eArea area);
+int getAreaMoveCost(eArea start, eArea end);
 
 float rankHealthPoints[4] = { 0.0f, 2.125f, 18.62068966f, 40.f };
 float rankHealthPointsMin[4] = { 0.0f,  1.f, 10.f, 30.f };
 float rankHealthPointsMax[4] = { 0.0f, 10.f, 30.f, 50.f };
 int rankMoleculeCosts[4] = { 0, 5, 8, 14 };
 
-struct playerStruct
+struct sPlayer
 {
 	string target;
 	int eta;
 	int score;
-	int storage[(int)mol::count];
-	int expertise[(int)mol::count];
+	int storage[(int)eMol::count];
+	int expertise[(int)eMol::count];
 
 	bool isInSamples() const { return target == targetSamples; }
 	bool isInDiagnosis() const { return target == targetDiagnosis; }
@@ -55,38 +55,38 @@ struct playerStruct
 	bool isInLaboratory() const { return target == targetLaboratory; }
 };
 
-struct myPlayerStruct : playerStruct
+struct sLocalPlayer : sPlayer
 {
 	int choosenSample;
 
-	myPlayerStruct() : choosenSample(-1) { }
+	sLocalPlayer() : choosenSample(-1) { }
 };
   
-ostream& operator << (ostream& out, const playerStruct& player);
-istream& operator >> (istream& input, playerStruct& player);
+ostream& operator << (ostream& out, const sPlayer& player);
+istream& operator >> (istream& input, sPlayer& player);
 
-struct suppliesStruct
+struct sSupplies
 {
-	int available[(int)mol::count];
+	int available[(int)eMol::count];
 
 	bool isAvaiable(int molecule) const { return available[molecule] > 0; }
 };
 
-ostream& operator << (ostream& out, const suppliesStruct& supplies);
-istream& operator >> (istream& input, suppliesStruct& supplies);
+ostream& operator << (ostream& out, const sSupplies& supplies);
+istream& operator >> (istream& input, sSupplies& supplies);
 
-struct sampleStruct
+struct sSample
 {
 	int sampleId;
 	int carriedBy;
 	int rank;
 	string expertiseGain;
 	int health;
-	int cost[(int)mol::count];
+	int cost[(int)eMol::count];
 
-	bool hasAllMolecules(const playerStruct& player) const
+	bool hasAllMolecules(const sPlayer& player) const
 	{
-		for (int i = 0; i < (int)mol::count; ++i)
+		for (int i = 0; i < (int)eMol::count; ++i)
 		{
 			if (cost[i] > player.storage[i] + player.expertise[i])
 				return false;
@@ -94,24 +94,24 @@ struct sampleStruct
 		return true;
 	}
 
-	bool hasMolecules(const playerStruct& player, int molecule) const
+	bool hasMolecules(const sPlayer& player, int molecule) const
 	{
 		if (cost[molecule] <= player.storage[molecule] + player.expertise[molecule])
 			return true;
 		return false;
 	}
 
-	int getMissingMoleculesCount(const playerStruct& player) const
+	int getMissingMoleculesCount(const sPlayer& player) const
 	{
 		int missing = 0;
-		for (int i = 0; i < (int)mol::count; ++i)
+		for (int i = 0; i < (int)eMol::count; ++i)
 		{
 			missing += max(cost[i] - (player.storage[i] + player.expertise[i]), 0);
 		}
 		return missing;
 	}
 
-	float getCost(const playerStruct& player) const
+	float getCost(const sPlayer& player) const
 	{
 		return (float)health / (float)(getMissingMoleculesCount(player) + 1);
 	}
@@ -122,16 +122,16 @@ struct sampleStruct
 	}
 };
 
-ostream& operator << (ostream& out, const sampleStruct& sample);
-istream& operator >> (istream& input, sampleStruct& sample);
+ostream& operator << (ostream& out, const sSample& sample);
+istream& operator >> (istream& input, sSample& sample);
 
-struct samplesCollectionStruct
+struct sSamplesCollection
 {
-	vector<sampleStruct> samples;
+	vector<sSample> samples;
 };
 
-ostream& operator << (ostream& out, const samplesCollectionStruct& collection);
-istream& operator >> (istream& input, samplesCollectionStruct& collection);
+ostream& operator << (ostream& out, const sSamplesCollection& collection);
+istream& operator >> (istream& input, sSamplesCollection& collection);
 
 namespace cmd
 {
@@ -174,12 +174,12 @@ int main()
 		cin >> a >> b >> c >> d >> e; cin.ignore();
 	}
 
-	myPlayerStruct player{};
-	playerStruct enemy{};
+	sLocalPlayer player{};
+	sPlayer enemy{};
 
-	samplesCollectionStruct collection{};
+	sSamplesCollection collection{};
 
-	suppliesStruct supplies{};
+	sSupplies supplies{};
 
 	// game loop
 	while (1)
@@ -199,13 +199,13 @@ int main()
 		//*/
 
 		// Collect sample.
-		vector<sampleStruct> samplesOfPlayer;
-		copy_if(collection.samples.begin(), collection.samples.end(), back_inserter(samplesOfPlayer), [](const sampleStruct& sample) { return sample.carriedBy == 0; });
+		vector<sSample> samplesOfPlayer;
+		copy_if(collection.samples.begin(), collection.samples.end(), back_inserter(samplesOfPlayer), [](const sSample& sample) { return sample.carriedBy == 0; });
 
 		if (samplesOfPlayer.empty())
 		{
-			collection.samples.erase(remove_if(collection.samples.begin(), collection.samples.end(), [](const sampleStruct& sample) { return sample.carriedBy != -1; }), collection.samples.end());
-			sort(collection.samples.begin(), collection.samples.end(), [&player](const sampleStruct& first, const sampleStruct& second)
+			collection.samples.erase(remove_if(collection.samples.begin(), collection.samples.end(), [](const sSample& sample) { return sample.carriedBy != -1; }), collection.samples.end());
+			sort(collection.samples.begin(), collection.samples.end(), [&player](const sSample& first, const sSample& second)
 			{
 				return first.getCost(player) > second.getCost(player);
 			});
@@ -258,7 +258,7 @@ int main()
 			else if (player.isInMolecules())
 			{
 				bool collectedMolecule = false;
-				for (int i = 0; i < (int)mol::count; ++i)
+				for (int i = 0; i < (int)eMol::count; ++i)
 				{
 					if (!sampleToCollect.hasMolecules(player, i) && supplies.isAvaiable(i))
 					{
@@ -280,29 +280,29 @@ int main()
 }
 
 
-ostream& operator << (ostream& out, const playerStruct& player)
+ostream& operator << (ostream& out, const sPlayer& player)
 {
 	out << player.target << " " << player.eta << " " << player.score;
-	for (int i = 0; i < (int)mol::count; ++i)
+	for (int i = 0; i < (int)eMol::count; ++i)
 		out << " " << player.storage[i];
-	for (int i = 0; i < (int)mol::count; ++i)
+	for (int i = 0; i < (int)eMol::count; ++i)
 		out << " " << player.expertise[i];
 	return out;
 }
-istream& operator >> (istream& input, playerStruct& player)
+istream& operator >> (istream& input, sPlayer& player)
 {
 	input >> player.target >> player.eta >> player.score;
-	for (int i = 0; i < (int)mol::count; ++i)
+	for (int i = 0; i < (int)eMol::count; ++i)
 		input >> player.storage[i];
-	for (int i = 0; i < (int)mol::count; ++i)
+	for (int i = 0; i < (int)eMol::count; ++i)
 		input >> player.expertise[i];
 	return input;
 }
 
 
-ostream& operator << (ostream& out, const suppliesStruct& supplies)
+ostream& operator << (ostream& out, const sSupplies& supplies)
 {
-	for (int i = 0; i < (int)mol::count; ++i)
+	for (int i = 0; i < (int)eMol::count; ++i)
 	{
 		if (i > 0)
 			out << " ";
@@ -310,31 +310,31 @@ ostream& operator << (ostream& out, const suppliesStruct& supplies)
 	}
 	return out;
 }
-istream& operator >> (istream& input, suppliesStruct& supplies)
+istream& operator >> (istream& input, sSupplies& supplies)
 {
-	for (int i = 0; i < (int)mol::count; ++i)
+	for (int i = 0; i < (int)eMol::count; ++i)
 		input >> supplies.available[i];
 	return input;
 }
 
 
-ostream& operator << (ostream& out, const sampleStruct& sample)
+ostream& operator << (ostream& out, const sSample& sample)
 {
 	out << sample.sampleId << " " << sample.carriedBy << " " << sample.rank << " " << sample.expertiseGain << " " << sample.health;
-	for (int i = 0; i < (int)mol::count; ++i)
+	for (int i = 0; i < (int)eMol::count; ++i)
 		out << " " << sample.cost[i];
 	return out;
 }
-istream& operator >> (istream& input, sampleStruct& sample)
+istream& operator >> (istream& input, sSample& sample)
 {
 	input >> sample.sampleId >> sample.carriedBy >> sample.rank >> sample.expertiseGain >> sample.health;
-	for (int i = 0; i < (int)mol::count; ++i)
+	for (int i = 0; i < (int)eMol::count; ++i)
 		input >> sample.cost[i];
 	return input;
 }
 
 
-ostream& operator << (ostream& out, const samplesCollectionStruct& collection)
+ostream& operator << (ostream& out, const sSamplesCollection& collection)
 {
 	out << collection.samples.size();
 
@@ -346,7 +346,7 @@ ostream& operator << (ostream& out, const samplesCollectionStruct& collection)
 
 	return out;
 }
-istream& operator >> (istream& input, samplesCollectionStruct& collection)
+istream& operator >> (istream& input, sSamplesCollection& collection)
 {
 	int sampleCount;
 	input >> sampleCount;
@@ -362,20 +362,20 @@ istream& operator >> (istream& input, samplesCollectionStruct& collection)
 	return input;
 }
 
-string getAreaName(areas a)
+string getAreaName(eArea area)
 {
-	switch (a)
+	switch (area)
 	{
-	case areas::start:		return targetStartPos;
-	case areas::samples:	return targetSamples;
-	case areas::diagnosis:	return targetDiagnosis;
-	case areas::molecules:	return targetMolecules;
-	case areas::laboratory:	return targetLaboratory;
+	case eArea::start:		return targetStartPos;
+	case eArea::samples:	return targetSamples;
+	case eArea::diagnosis:	return targetDiagnosis;
+	case eArea::molecules:	return targetMolecules;
+	case eArea::laboratory:	return targetLaboratory;
 	default: return "";
 	}
 }
 
-int areasMoveCost[(int)areas::count][(int)areas::count] =
+int areasMoveCost[(int)eArea::count][(int)eArea::count] =
 {
 	{ 0, 2, 2, 2, 2 },
 	{ 2, 0, 3, 3, 3 },
@@ -384,9 +384,9 @@ int areasMoveCost[(int)areas::count][(int)areas::count] =
 	{ 2, 3, 4, 3, 0 },
 };
 
-int getAreaMoveCost(areas start, areas end)
+int getAreaMoveCost(eArea start, eArea end)
 {
-	if (start != areas::count && end != areas::count)
+	if (start != eArea::count && end != eArea::count)
 		return areasMoveCost[(int)start][(int)end];
 	return 0;
 }
