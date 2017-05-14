@@ -44,8 +44,8 @@ string getAreaName(eArea area);
 int getAreaMoveCost(eArea start, eArea end);
 
 float rankHealthPoints[4] = { 0.0f, 2.125f, 18.62068966f, 40.f };
-float rankHealthPointsMin[4] = { 0.0f,  1.f, 10.f, 30.f };
-float rankHealthPointsMax[4] = { 0.0f, 10.f, 30.f, 50.f };
+int rankHealthPointsMin[4] = { 0,  1, 10, 30 };
+int rankHealthPointsMax[4] = { 0, 10, 30, 50 };
 int rankMinMoleculeCosts[4] = { 0, 3, 5,  7 };
 int rankMaxMoleculeCosts[4] = { 0, 5, 8, 14 };
 
@@ -648,11 +648,17 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	if (isInSamples())
 	{
 		int sampleRank = 1;
-		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 3;
+		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2;
 		if (totalExpertise >= rankMinMoleculeCosts[2])
 			sampleRank = 2;
 		if (totalExpertise >= rankMaxMoleculeCosts[3])
 			sampleRank = 3;
+
+		const int pointsToGain = pointsToWin - score;
+		if (pointsToGain <= rankHealthPointsMin[2])
+			sampleRank = min(sampleRank, 2);
+		if (pointsToGain <= rankHealthPointsMin[1])
+			sampleRank = min(sampleRank, 1);
 
 		cmd::connectRank(sampleRank, getMessage());
 		return true;
@@ -695,7 +701,9 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 	int wantedType = -1;
 
 	int usedStorage[(int)eMol::count] = {};
-	int gainExpertise[(int)eMol::count] = {};
+	int gainedExpertise[(int)eMol::count] = {};
+	int gainedHealht = 0;
+
 
 	for (const auto& sample : myDiagnosedSamples.samples)
 	{
@@ -703,7 +711,7 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 		int totalMissingSupplies = 0;
 		for (int i = 0; i < (int)eMol::count; ++i)
 		{
-			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) - usedStorage[i] + gainExpertise[i]), 0);
+			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) - usedStorage[i] + gainedExpertise[i]), 0);
 			totalMissingSupplies += moleculeToGather;
 			if (moleculeToGather > supplies.available[i])
 			{
@@ -725,7 +733,7 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 
 		for (int i = 0; i < (int)eMol::count; ++i)
 		{
-			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) - usedStorage[i] + gainExpertise[i]), 0);
+			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) - usedStorage[i] + gainedExpertise[i]), 0);
 			if (moleculeToGather > 0)
 			{
 				wantedType = i;
@@ -736,15 +744,20 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 		// We have all molecules.
 		if (wantedType == -1)
 		{
+			// Check if we have enough points to win. If so than do not collect more molecules.
+			gainedHealht += sample.health;
+			if (score < pointsToWin && score + gainedHealht >= pointsToWin)
+				break;
+
 			addMessage("weHaveAll");
 			for (int i = 0; i < (int)eMol::count; ++i)
 			{
-				usedStorage[i] += max(sample.cost[i] - expertise[i] - gainExpertise[i], 0);
+				usedStorage[i] += max(sample.cost[i] - expertise[i] - gainedExpertise[i], 0);
 			}
 
 			int extertiseInMolecule = getMoleculeFromString(sample.expertiseGain);
 			if (extertiseInMolecule >= 0 && extertiseInMolecule < (int)eMol::count)
-				++gainExpertise[extertiseInMolecule];
+				++gainedExpertise[extertiseInMolecule];
 
 			continue;
 		}
