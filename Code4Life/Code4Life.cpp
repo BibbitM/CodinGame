@@ -16,6 +16,7 @@ static const string targetLaboratory = "LABORATORY";
 
 static const int maxSamplesPerPlayer = 3;
 static const int maxMoleculesPerPlayer = 10;
+static const int pointsToWin = 170;
 
 enum class eMol
 {
@@ -226,6 +227,7 @@ struct sSamplesCollection
 {
 	vector<sSample> samples;
 
+	void sortByHealth();
 	int getNumSamplesCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesToAnalize() const;
@@ -294,6 +296,9 @@ int main()
 		cin >> supplies; cin.ignore();
 
 		cin >> collection; cin.ignore();
+
+
+		collection.sortByHealth();
 
 		/*
 		cerr << player << endl;
@@ -444,6 +449,20 @@ istream& operator >> (istream& input, sSample& sample)
 	return input;
 }
 
+
+void sSamplesCollection::sortByHealth()
+{
+	sort(samples.begin(), samples.end(), [](const sSample& first, const sSample& second)
+	{
+		float firstHealth = first.isDiagnosed() ? (float)first.health : rankHealthPoints[first.rank];
+		float secondHealth = second.isDiagnosed() ? (float)second.health : rankHealthPoints[second.rank];
+
+		if (firstHealth == secondHealth)
+			return first.sampleId > second.sampleId;
+
+		return firstHealth < secondHealth;
+	});
+}
 
 int sSamplesCollection::getNumSamplesCarriedBy(int carriedBy) const
 {
