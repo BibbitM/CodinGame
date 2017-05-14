@@ -3,25 +3,42 @@
 #include <vector>
 #include <algorithm>
 #include <iterator>
+#include <cassert>
 
 using namespace std;
 
+static const string targetStartPos = "START_POS";
+static const string targetSamples = "SAMPLES";
 static const string targetDiagnosis = "DIAGNOSIS";
 static const string targetMolecules = "MOLECULES";
 static const string targetLaboratory = "LABORATORY";
-static const string targetSamples = "SAMPLES";
 
-enum class Mol
+enum class mol
 {
 	A,
 	B,
 	C,
 	D,
 	E,
-	Count
+	count
 };
 
-float rankHealthPoints[4] = { 0.0f, 5.5f, 20.f, 40.f };
+enum class areas
+{
+	start,
+	samples,
+	diagnosis,
+	molecules,
+	laboratory,
+	count
+};
+
+string getAreaName(areas a);
+int getAreaMoveCost(areas start, areas end);
+
+float rankHealthPoints[4] = { 0.0f, 2.125f, 18.62068966f, 40.f };
+float rankHealthPointsMin[4] = { 0.0f,  1.f, 10.f, 30.f };
+float rankHealthPointsMax[4] = { 0.0f, 10.f, 30.f, 50.f };
 int rankMoleculeCosts[4] = { 0, 5, 8, 14 };
 
 struct playerStruct
@@ -29,13 +46,13 @@ struct playerStruct
 	string target;
 	int eta;
 	int score;
-	int storage[(int)Mol::Count];
-	int expertise[(int)Mol::Count];
+	int storage[(int)mol::count];
+	int expertise[(int)mol::count];
 
+	bool isInSamples() const { return target == targetSamples; }
 	bool isInDiagnosis() const { return target == targetDiagnosis; }
 	bool isInMolecules() const { return target == targetMolecules; }
 	bool isInLaboratory() const { return target == targetLaboratory; }
-	bool isInSamples() const { return target == targetSamples; }
 };
 
 struct myPlayerStruct : playerStruct
@@ -50,7 +67,7 @@ istream& operator >> (istream& input, playerStruct& player);
 
 struct suppliesStruct
 {
-	int available[(int)Mol::Count];
+	int available[(int)mol::count];
 
 	bool isAvaiable(int molecule) const { return available[molecule] > 0; }
 };
@@ -65,11 +82,11 @@ struct sampleStruct
 	int rank;
 	string expertiseGain;
 	int health;
-	int cost[(int)Mol::Count];
+	int cost[(int)mol::count];
 
 	bool hasAllMolecules(const playerStruct& player) const
 	{
-		for (int i = 0; i < (int)Mol::Count; ++i)
+		for (int i = 0; i < (int)mol::count; ++i)
 		{
 			if (cost[i] > player.storage[i] + player.expertise[i])
 				return false;
@@ -87,7 +104,7 @@ struct sampleStruct
 	int getMissingMoleculesCount(const playerStruct& player) const
 	{
 		int missing = 0;
-		for (int i = 0; i < (int)Mol::Count; ++i)
+		for (int i = 0; i < (int)mol::count; ++i)
 		{
 			missing += max(cost[i] - (player.storage[i] + player.expertise[i]), 0);
 		}
@@ -136,6 +153,15 @@ namespace cmd
  **/
 int main()
 {
+	/*
+	assert(getAreaMoveCost(areas::start, areas::start) == 0);
+	assert(getAreaMoveCost(areas::samples, areas::samples) == 0);
+	assert(getAreaMoveCost(areas::start, areas::laboratory) == 2);
+	assert(getAreaMoveCost(areas::molecules, areas::diagnosis) == 3);
+	assert(getAreaMoveCost(areas::diagnosis, areas::laboratory) == 4);
+	//**/
+
+
 	int projectCount;
 	cin >> projectCount; cin.ignore();
 	for (int i = 0; i < projectCount; i++)
@@ -232,7 +258,7 @@ int main()
 			else if (player.isInMolecules())
 			{
 				bool collectedMolecule = false;
-				for (int i = 0; i < (int)Mol::Count; ++i)
+				for (int i = 0; i < (int)mol::count; ++i)
 				{
 					if (!sampleToCollect.hasMolecules(player, i) && supplies.isAvaiable(i))
 					{
@@ -257,18 +283,18 @@ int main()
 ostream& operator << (ostream& out, const playerStruct& player)
 {
 	out << player.target << " " << player.eta << " " << player.score;
-	for (int i = 0; i < (int)Mol::Count; ++i)
+	for (int i = 0; i < (int)mol::count; ++i)
 		out << " " << player.storage[i];
-	for (int i = 0; i < (int)Mol::Count; ++i)
+	for (int i = 0; i < (int)mol::count; ++i)
 		out << " " << player.expertise[i];
 	return out;
 }
 istream& operator >> (istream& input, playerStruct& player)
 {
 	input >> player.target >> player.eta >> player.score;
-	for (int i = 0; i < (int)Mol::Count; ++i)
+	for (int i = 0; i < (int)mol::count; ++i)
 		input >> player.storage[i];
-	for (int i = 0; i < (int)Mol::Count; ++i)
+	for (int i = 0; i < (int)mol::count; ++i)
 		input >> player.expertise[i];
 	return input;
 }
@@ -276,7 +302,7 @@ istream& operator >> (istream& input, playerStruct& player)
 
 ostream& operator << (ostream& out, const suppliesStruct& supplies)
 {
-	for (int i = 0; i < (int)Mol::Count; ++i)
+	for (int i = 0; i < (int)mol::count; ++i)
 	{
 		if (i > 0)
 			out << " ";
@@ -286,7 +312,7 @@ ostream& operator << (ostream& out, const suppliesStruct& supplies)
 }
 istream& operator >> (istream& input, suppliesStruct& supplies)
 {
-	for (int i = 0; i < (int)Mol::Count; ++i)
+	for (int i = 0; i < (int)mol::count; ++i)
 		input >> supplies.available[i];
 	return input;
 }
@@ -295,14 +321,14 @@ istream& operator >> (istream& input, suppliesStruct& supplies)
 ostream& operator << (ostream& out, const sampleStruct& sample)
 {
 	out << sample.sampleId << " " << sample.carriedBy << " " << sample.rank << " " << sample.expertiseGain << " " << sample.health;
-	for (int i = 0; i < (int)Mol::Count; ++i)
+	for (int i = 0; i < (int)mol::count; ++i)
 		out << " " << sample.cost[i];
 	return out;
 }
 istream& operator >> (istream& input, sampleStruct& sample)
 {
 	input >> sample.sampleId >> sample.carriedBy >> sample.rank >> sample.expertiseGain >> sample.health;
-	for (int i = 0; i < (int)Mol::Count; ++i)
+	for (int i = 0; i < (int)mol::count; ++i)
 		input >> sample.cost[i];
 	return input;
 }
@@ -334,4 +360,33 @@ istream& operator >> (istream& input, samplesCollectionStruct& collection)
 	}
 
 	return input;
+}
+
+string getAreaName(areas a)
+{
+	switch (a)
+	{
+	case areas::start:		return targetStartPos;
+	case areas::samples:	return targetSamples;
+	case areas::diagnosis:	return targetDiagnosis;
+	case areas::molecules:	return targetMolecules;
+	case areas::laboratory:	return targetLaboratory;
+	default: return "";
+	}
+}
+
+int areasMoveCost[(int)areas::count][(int)areas::count] =
+{
+	{ 0, 2, 2, 2, 2 },
+	{ 2, 0, 3, 3, 3 },
+	{ 2, 3, 0, 3, 4 },
+	{ 2, 3, 3, 0, 3 },
+	{ 2, 3, 4, 3, 0 },
+};
+
+int getAreaMoveCost(areas start, areas end)
+{
+	if (start != areas::count && end != areas::count)
+		return areasMoveCost[(int)start][(int)end];
+	return 0;
 }
