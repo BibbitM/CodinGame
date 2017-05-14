@@ -654,6 +654,9 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 		if (totalExpertise >= rankMaxMoleculeCosts[3])
 			sampleRank = 3;
 
+		if (mySamplesNum > 1)
+			sampleRank = max(sampleRank, 2);
+
 		const int pointsToGain = pointsToWin - score;
 		if (pointsToGain <= rankHealthPointsMin[2])
 			sampleRank = min(sampleRank, 2);
