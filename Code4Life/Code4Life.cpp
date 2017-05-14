@@ -461,7 +461,7 @@ void sSamplesCollection::sortByHealth()
 		if (firstHealth == secondHealth)
 			return first.sampleId > second.sampleId;
 
-		return firstHealth < secondHealth;
+		return firstHealth > secondHealth;
 	});
 }
 
