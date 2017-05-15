@@ -16,7 +16,6 @@ static const string targetLaboratory = "LABORATORY";
 
 static const int maxSamplesPerPlayer = 3;
 static const int maxMoleculesPerPlayer = 10;
-static const int pointsToWin = 170;
 
 enum class eMol
 {
@@ -649,19 +648,10 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	{
 		int sampleRank = 1;
 		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2;
-		if (totalExpertise >= rankMinMoleculeCosts[2])
+		if (totalExpertise >= rankMaxMoleculeCosts[2])
 			sampleRank = 2;
 		if (totalExpertise >= rankMaxMoleculeCosts[3])
 			sampleRank = 3;
-
-		if (mySamplesNum > 1)
-			sampleRank = max(sampleRank, 2);
-
-		const int pointsToGain = pointsToWin - score;
-		if (pointsToGain <= rankHealthPointsMin[2])
-			sampleRank = min(sampleRank, 2);
-		if (pointsToGain <= rankHealthPointsMin[1])
-			sampleRank = min(sampleRank, 1);
 
 		cmd::connectRank(sampleRank, getMessage());
 		return true;
@@ -747,11 +737,6 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 		// We have all molecules.
 		if (wantedType == -1)
 		{
-			// Check if we have enough points to win. If so than do not collect more molecules.
-			gainedHealht += sample.health;
-			if (score < pointsToWin && score + gainedHealht >= pointsToWin)
-				break;
-
 			addMessage("weHaveAll");
 			for (int i = 0; i < (int)eMol::count; ++i)
 			{
