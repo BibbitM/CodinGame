@@ -647,7 +647,7 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	if (isInSamples())
 	{
 		int sampleRank = 1;
-		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2;
+		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 3;
 		if (totalExpertise >= rankMaxMoleculeCosts[2])
 			sampleRank = 2;
 		if (totalExpertise >= rankMaxMoleculeCosts[3])
@@ -760,7 +760,10 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 	}
 
 	// No molecule to gather. Choose random one.
-	if (wantedType == -1 && getStorageMoleculesNum() < maxMoleculesPerPlayer * 3 / 4)
+	const int totalUsedMolecules = accumulate(begin(usedStorage), end(usedStorage), 0);
+	const int wantedMolecules = min(max(totalUsedMolecules + maxMoleculesPerPlayer * 3 / 4, maxMoleculesPerPlayer * 3 / 4), maxMoleculesPerPlayer);
+
+	if (wantedType == -1 && getStorageMoleculesNum() < wantedMolecules)
 	{
 		int startMolecule = rand() % (int)eMol::count;
 		for (int i = 0; i < (int)eMol::count; ++i)
