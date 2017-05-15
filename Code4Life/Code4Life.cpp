@@ -753,7 +753,28 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 		break;
 	}
 
-	if (wantedType == -1 || getStorageMoleculesNum() >= maxMoleculesPerPlayer)
+	if (getStorageMoleculesNum() >= maxMoleculesPerPlayer)
+	{
+		setState(eState::produceMedicines);
+		return false;
+	}
+
+	// No molecule to gather. Choose random one.
+	if (wantedType == -1 && getStorageMoleculesNum() < maxMoleculesPerPlayer * 3 / 4)
+	{
+		int startMolecule = rand() % (int)eMol::count;
+		for (int i = 0; i < (int)eMol::count; ++i)
+		{
+			int molecule = (startMolecule + i) % (int)eMol::count;
+			if (supplies.available[molecule] > 0)
+			{
+				wantedType = molecule;
+				break;
+			}
+		}
+	}
+
+	if (wantedType == -1)
 	{
 		setState(eState::produceMedicines);
 		return false;
