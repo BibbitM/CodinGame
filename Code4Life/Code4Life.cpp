@@ -77,7 +77,7 @@ enum class eState
 {
 	start,
 	collectSamples,
-	analizeSamples,
+	analyzeSamples,
 	chooseSamples,
 	gatherMolecules,
 	returnSamples,
@@ -90,7 +90,7 @@ string toString(eState state)
 	{
 	case eState::start:				return "Start";
 	case eState::collectSamples:	return "Collect samples";
-	case eState::analizeSamples:	return "Analize samples";
+	case eState::analyzeSamples:	return "Analyze samples";
 	case eState::chooseSamples:		return "Choose samples";
 	case eState::gatherMolecules:	return "Gather molecules";
 	case eState::returnSamples:		return "Return samples";
@@ -121,7 +121,7 @@ struct sLocalPlayer : sPlayer
 	bool updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
 	bool updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
 	bool updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateAnalizeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	bool updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
 	bool updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
 	bool updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
 	bool updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
@@ -230,7 +230,7 @@ struct sSamplesCollection
 	void sortByHealth();
 	int getNumSamplesCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesCarriedBy(int carriedBy) const;
-	sSamplesCollection getSamplesToAnalize() const;
+	sSamplesCollection getSamplesToAnalyze() const;
 	sSamplesCollection getDiagnosedSamples() const;
 };
 
@@ -489,7 +489,7 @@ sSamplesCollection sSamplesCollection::getSamplesCarriedBy(int carriedBy) const
 	return outCollection;
 }
 
-sSamplesCollection sSamplesCollection::getSamplesToAnalize() const
+sSamplesCollection sSamplesCollection::getSamplesToAnalyze() const
 {
 	sSamplesCollection outCollection{};
 	outCollection.samples.reserve(samples.size());
@@ -613,8 +613,8 @@ bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& c
 		return updateStart(enemy, collection, supplies);
 	case eState::collectSamples:
 		return updateCollectSamples(enemy, collection, supplies);
-	case eState::analizeSamples:
-		return updateAnalizeSamples(enemy, collection, supplies);
+	case eState::analyzeSamples:
+		return updateAnalyzeSamples(enemy, collection, supplies);
 	case eState::chooseSamples:
 		return updateChooseSamples(enemy, collection, supplies);
 	case eState::gatherMolecules:
@@ -640,7 +640,7 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	const int mySamplesNum = collection.getNumSamplesCarriedBy(0);
 	if (mySamplesNum >= maxSamplesPerPlayer)
 	{
-		setState(eState::analizeSamples);
+		setState(eState::analyzeSamples);
 		return false;
 	}
 
@@ -661,10 +661,10 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	return true;
 }
 
-bool sLocalPlayer::updateAnalizeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
 {
-	auto mySamplesToAnalize = collection.getSamplesCarriedBy(0).getSamplesToAnalize();
-	if (mySamplesToAnalize.samples.empty())
+	auto mySamplesToAnalyze = collection.getSamplesCarriedBy(0).getSamplesToAnalyze();
+	if (mySamplesToAnalyze.samples.empty())
 	{
 		setState(eState::chooseSamples);
 		return false;
@@ -672,7 +672,7 @@ bool sLocalPlayer::updateAnalizeSamples(const sPlayer& enemy, const sSamplesColl
 
 	if (isInDiagnosis())
 	{
-		cmd::connectId(mySamplesToAnalize.samples[0].sampleId, getMessage());
+		cmd::connectId(mySamplesToAnalyze.samples[0].sampleId, getMessage());
 		return true;
 	}
 
