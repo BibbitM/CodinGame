@@ -16,6 +16,7 @@ static const string targetLaboratory = "LABORATORY";
 
 static const int maxSamplesPerPlayer = 3;
 static const int maxMoleculesPerPlayer = 10;
+static const int projectHealthPoints = 50;
 
 enum class eMol
 {
@@ -105,6 +106,7 @@ ostream& operator << (ostream& out, eState state)
 	return out;
 }
 
+struct sProjectsCollection;
 struct sSamplesCollection;
 struct sSupplies;
 
@@ -117,15 +119,15 @@ struct sLocalPlayer : sPlayer
 
 	sLocalPlayer() : state(eState::start), shouldLog(false) { }
 
-	void update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
-	bool updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies);
+	void update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 
 	void setState(eState newState)
 	{
@@ -223,11 +225,13 @@ struct sSample
 ostream& operator << (ostream& out, const sSample& sample);
 istream& operator >> (istream& input, sSample& sample);
 
+struct sProjectsCollection;
+
 struct sSamplesCollection
 {
 	vector<sSample> samples;
 
-	void sortByHealth();
+	void sortByHealth(const sPlayer& player, const sProjectsCollection& projects);
 	int getNumSamplesCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesToAnalyze() const;
@@ -236,6 +240,31 @@ struct sSamplesCollection
 
 ostream& operator << (ostream& out, const sSamplesCollection& collection);
 istream& operator >> (istream& input, sSamplesCollection& collection);
+
+struct sProject
+{
+	int required[(int)eMol::count];
+
+	bool isGained(const sPlayer& player) const;
+	int getMissingMolecules(const sPlayer& player, int molecule) const;
+	int getTotalMissing(const sPlayer& player) const;
+	float getHealthBonus(const sPlayer& player, int molecule) const;
+};
+
+ostream& operator << (ostream& out, const sProject& project);
+istream& operator >> (istream& input, sProject& project);
+
+struct sProjectsCollection
+{
+	vector<sProject> projects;
+
+	float getHealtBonus(const sPlayer& player, int molecule) const;
+	int getNotGainedProjectsNum(const sPlayer& player) const;
+};
+
+ostream& operator << (ostream& out, const sProjectsCollection& collection);
+istream& operator >> (istream& input, sProjectsCollection& collection);
+
 
 namespace cmd
 {
@@ -267,25 +296,16 @@ int main()
 	assert(getAreaMoveCost(areas::diagnosis, areas::laboratory) == 4);
 	//**/
 
-
-	int projectCount;
-	cin >> projectCount; cin.ignore();
-	for (int i = 0; i < projectCount; i++)
-	{
-		int a;
-		int b;
-		int c;
-		int d;
-		int e;
-		cin >> a >> b >> c >> d >> e; cin.ignore();
-	}
-
 	sLocalPlayer player{};
 	sPlayer enemy{};
 
 	sSamplesCollection collection{};
 
 	sSupplies supplies{};
+
+	sProjectsCollection projects{};
+
+	cin >> projects;
 
 	// game loop
 	while (1)
@@ -298,19 +318,26 @@ int main()
 		cin >> collection; cin.ignore();
 
 
-		collection.sortByHealth();
+		collection.sortByHealth(player, projects);
 
 		/*
+		player.shouldLog = true;
+
+		cerr << projects << endl;
+		for (const auto& proj : projects.projects)
+		{
+			cerr << proj.getTotalMissing(player) << " ";
+		}
+		cerr << endl;
 		cerr << player << endl;
 		cerr << enemy << endl;
 		cerr << supplies << endl;
 		cerr << collection << endl;
-		player.shouldLog = true;
 		//*/
 
 		bool update = true;
 		if (update)
-			player.update(enemy, collection, supplies);
+			player.update(enemy, collection, supplies, projects);
 		else
 		{
 			// Collect sample.
@@ -450,12 +477,15 @@ istream& operator >> (istream& input, sSample& sample)
 }
 
 
-void sSamplesCollection::sortByHealth()
+void sSamplesCollection::sortByHealth(const sPlayer& player, const sProjectsCollection& projects)
 {
-	sort(samples.begin(), samples.end(), [](const sSample& first, const sSample& second)
+	sort(samples.begin(), samples.end(), [&player, &projects](const sSample& first, const sSample& second)
 	{
 		float firstHealth = first.isDiagnosed() ? (float)first.health : rankHealthPoints[first.rank];
 		float secondHealth = second.isDiagnosed() ? (float)second.health : rankHealthPoints[second.rank];
+
+		firstHealth += projects.getHealtBonus(player, getMoleculeFromString(first.expertiseGain));
+		secondHealth += projects.getHealtBonus(player, getMoleculeFromString(second.expertiseGain));
 
 		if (firstHealth == secondHealth)
 			return first.sampleId < second.sampleId;
@@ -545,6 +575,105 @@ istream& operator >> (istream& input, sSamplesCollection& collection)
 	return input;
 }
 
+bool sProject::isGained(const sPlayer& player) const
+{
+	bool allGained = true;
+	for (int i = 0; i < (int)eMol::count; ++i)
+	{
+		if (required > player.expertise)
+		{
+			allGained = false;
+			break;
+		}
+	}
+	return allGained;
+}
+
+int sProject::getMissingMolecules(const sPlayer& player, int molecule) const
+{
+	return max(required[molecule] - player.expertise[molecule], 0);
+}
+
+int sProject::getTotalMissing(const sPlayer& player) const
+{
+	int totalMissing = 0;
+	for (int i = 0; i < (int)eMol::count; ++i)
+		totalMissing += getMissingMolecules(player, i);
+	return totalMissing;
+}
+
+float sProject::getHealthBonus(const sPlayer& player, int molecule) const
+{
+	if (getMissingMolecules(player, molecule) == 0)
+		return 0;
+
+	return (float)projectHealthPoints / (float)((getTotalMissing(player) - 1) * 2 + 1);
+}
+
+ostream& operator << (ostream& out, const sProject& project)
+{
+	for (int i = 0; i < (int)eMol::count; ++i)
+	{
+		if (i > 0)
+			out << " ";
+		out << project.required[i];
+	}
+	return out;
+}
+istream& operator >> (istream& input, sProject& project)
+{
+	for (int i = 0; i < (int)eMol::count; ++i)
+		input >> project.required[i];
+	return input;
+}
+
+
+float sProjectsCollection::getHealtBonus(const sPlayer& player, int molecule) const
+{
+	float totalBonus = 0.0f;
+	for (const auto& proj : projects)
+		totalBonus += proj.getHealthBonus(player, molecule);
+	return totalBonus;
+}
+
+int sProjectsCollection::getNotGainedProjectsNum(const sPlayer& player) const
+{
+	int notGanedNum = 0;
+	for (const auto& proj : projects)
+		if (!proj.isGained(player))
+			++notGanedNum;
+	return notGanedNum;
+}
+
+ostream& operator << (ostream& out, const sProjectsCollection& collection)
+{
+	out << collection.projects.size();
+
+	for (int i = 0; i < (int)collection.projects.size(); ++i)
+	{
+		out << endl;
+		out << collection.projects[i];
+	}
+
+	return out;
+}
+istream& operator >> (istream& input, sProjectsCollection& collection)
+{
+	int projectCount;
+	input >> projectCount;
+
+	collection.projects.resize(projectCount);
+
+	for (int i = 0; i < projectCount; ++i)
+	{
+		input.ignore();
+		input >> collection.projects[i];
+	}
+
+	return input;
+}
+
+
 int getMoleculeFromString(const string& moleculeName)
 {
 	if (moleculeName == "A")
@@ -591,13 +720,13 @@ int getAreaMoveCost(eArea start, eArea end)
 }
 
 
-void sLocalPlayer::update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+void sLocalPlayer::update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
-	while (!updateState(enemy, collection, supplies))
+	while (!updateState(enemy, collection, supplies, projects))
 		continue;
 }
 
-bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
 	message.clear();
 
@@ -610,32 +739,32 @@ bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& c
 	switch (state)
 	{
 	case eState::start:
-		return updateStart(enemy, collection, supplies);
+		return updateStart(enemy, collection, supplies, projects);
 	case eState::collectSamples:
-		return updateCollectSamples(enemy, collection, supplies);
+		return updateCollectSamples(enemy, collection, supplies, projects);
 	case eState::analyzeSamples:
-		return updateAnalyzeSamples(enemy, collection, supplies);
+		return updateAnalyzeSamples(enemy, collection, supplies, projects);
 	case eState::chooseSamples:
-		return updateChooseSamples(enemy, collection, supplies);
+		return updateChooseSamples(enemy, collection, supplies, projects);
 	case eState::gatherMolecules:
-		return updateGatherMolecules(enemy, collection, supplies);
+		return updateGatherMolecules(enemy, collection, supplies, projects);
 	case eState::returnSamples:
-		return updateReturnSamples(enemy, collection, supplies);
+		return updateReturnSamples(enemy, collection, supplies, projects);
 	case eState::produceMedicines:
-		return updateProduceMedicines(enemy, collection, supplies);
+		return updateProduceMedicines(enemy, collection, supplies, projects);
 	default:
 		cmd::wait("ERROR");
 		return true;
 	}
 }
 
-bool sLocalPlayer::updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
 	setState(eState::collectSamples);
 	return false;
 }
 
-bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
 	const int mySamplesNum = collection.getNumSamplesCarriedBy(0);
 	if (mySamplesNum >= maxSamplesPerPlayer)
@@ -647,7 +776,7 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	if (isInSamples())
 	{
 		int sampleRank = 1;
-		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2;
+		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2 - projects.getNotGainedProjectsNum(*this) * 2;
 		if (totalExpertise >= rankMaxMoleculeCosts[2])
 			sampleRank = 2;
 		if (totalExpertise >= rankMaxMoleculeCosts[3])
@@ -661,7 +790,7 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	return true;
 }
 
-bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
 	auto mySamplesToAnalyze = collection.getSamplesCarriedBy(0).getSamplesToAnalyze();
 	if (mySamplesToAnalyze.samples.empty())
@@ -680,14 +809,14 @@ bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesColl
 	return true;
 }
 
-bool sLocalPlayer::updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
 	// TODO
 	setState(eState::gatherMolecules);
 	return false;
 }
 
-bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
 	auto myDiagnosedSamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples();
 
@@ -793,7 +922,7 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 	return true;
 }
 
-bool sLocalPlayer::updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
 	auto mySamples = collection.getSamplesCarriedBy(0);
 	if (mySamples.samples.empty())
@@ -812,7 +941,7 @@ bool sLocalPlayer::updateReturnSamples(const sPlayer& enemy, const sSamplesColle
 	return true;
 }
 
-bool sLocalPlayer::updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies)
+bool sLocalPlayer::updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
 	auto myDiagnosedSamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples();
 
