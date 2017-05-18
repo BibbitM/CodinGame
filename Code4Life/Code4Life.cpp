@@ -100,6 +100,21 @@ string toString(eState state)
 	}
 }
 
+string toShortString(eState state)
+{
+	switch (state)
+	{
+	case eState::start:				return "ST";
+	case eState::collectSamples:	return "CS";
+	case eState::analyzeSamples:	return "AS";
+	case eState::chooseSamples:		return "CS";
+	case eState::gatherMolecules:	return "GM";
+	case eState::returnSamples:		return "RS";
+	case eState::produceMedicines:	return "PM";
+	default: return "";
+	}
+}
+
 ostream& operator << (ostream& out, eState state)
 {
 	out << toString(state);
@@ -141,7 +156,7 @@ struct sLocalPlayer : sPlayer
 		if (!shouldLog)
 			return string();
 
-		string outMessage = toString(state);
+		string outMessage = toShortString(state);
 		if (!message.empty())
 		{
 			outMessage += " ";
