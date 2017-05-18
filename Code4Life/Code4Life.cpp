@@ -320,7 +320,7 @@ int main()
 
 		collection.sortByHealth(player, projects);
 
-		/*
+		//*
 		player.shouldLog = true;
 
 		cerr << projects << endl;
@@ -329,6 +329,7 @@ int main()
 			cerr << proj.getTotalMissing(player) << " ";
 		}
 		cerr << endl;
+		//cerr << "NotGainedNum " << projects.getNotGainedProjectsNum(player) << endl;
 		cerr << player << endl;
 		cerr << enemy << endl;
 		cerr << supplies << endl;
@@ -580,7 +581,7 @@ bool sProject::isGained(const sPlayer& player) const
 	bool allGained = true;
 	for (int i = 0; i < (int)eMol::count; ++i)
 	{
-		if (required > player.expertise)
+		if (required[i] > player.expertise[i])
 		{
 			allGained = false;
 			break;
@@ -638,11 +639,11 @@ float sProjectsCollection::getHealtBonus(const sPlayer& player, int molecule) co
 
 int sProjectsCollection::getNotGainedProjectsNum(const sPlayer& player) const
 {
-	int notGanedNum = 0;
+	int notGainedNum = 0;
 	for (const auto& proj : projects)
 		if (!proj.isGained(player))
-			++notGanedNum;
-	return notGanedNum;
+			++notGainedNum;
+	return notGainedNum;
 }
 
 ostream& operator << (ostream& out, const sProjectsCollection& collection)
@@ -776,10 +777,11 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	if (isInSamples())
 	{
 		int sampleRank = 1;
-		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2 - projects.getNotGainedProjectsNum(*this) * 2;
+		const int projectsToDevelop = projects.getNotGainedProjectsNum(*this);
+		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2 - projectsToDevelop * 4;
 		if (totalExpertise >= rankMaxMoleculeCosts[2])
 			sampleRank = 2;
-		if (totalExpertise >= rankMaxMoleculeCosts[3])
+		if (projectsToDevelop <= 1 && totalExpertise >= rankMaxMoleculeCosts[3])
 			sampleRank = 3;
 
 		cmd::connectRank(sampleRank, getMessage());
