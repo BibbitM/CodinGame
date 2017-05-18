@@ -320,7 +320,7 @@ int main()
 
 		collection.sortByHealth(player, projects);
 
-		//*
+		/*
 		player.shouldLog = true;
 
 		cerr << projects << endl;
