@@ -623,7 +623,7 @@ float sProject::getHealthBonus(const sPlayer& player, int molecule) const
 	if (getMissingMolecules(player, molecule) == 0)
 		return 0;
 
-	return (float)projectHealthPoints / (float)((getTotalMissing(player) - 1) * 2 + 1);
+	return (float)projectHealthPoints / (float)((getTotalMissing(player) - 1) * 1 + 1);
 }
 
 ostream& operator << (ostream& out, const sProject& project)
@@ -793,8 +793,8 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	{
 		int sampleRank = 1;
 		const int projectsToDevelop = projects.getNotGainedProjectsNum(*this);
-		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2 - projectsToDevelop * 2;
-		if (totalExpertise >= rankMaxMoleculeCosts[2])
+		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2 - projectsToDevelop;
+		if (totalExpertise >= rankMinMoleculeCosts[2])
 			sampleRank = 2;
 		if (totalExpertise >= rankMaxMoleculeCosts[3])
 			sampleRank = 3;
