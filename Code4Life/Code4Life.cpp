@@ -890,9 +890,13 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 		return false;
 	}
 
+	int totalSamplesRank = 0;
+	for (const auto& sample : myDiagnosedSamples.samples)
+		totalSamplesRank += sample.rank;
+
 	// No molecule to gather. Choose random one.
 	const int totalUsedMolecules = accumulate(begin(usedStorage), end(usedStorage), 0);
-	const int wantedMolecules = min(max(totalUsedMolecules + maxMoleculesPerPlayer * 1 / 2, maxMoleculesPerPlayer * 3 / 4), maxMoleculesPerPlayer);
+	const int wantedMolecules = min(max(totalUsedMolecules + min(max(maxMoleculesPerPlayer * 1 / 2, (getExpretiseMoleculesNum() - totalSamplesRank) * 1 / 2), maxMoleculesPerPlayer * 4 / 5), maxMoleculesPerPlayer * 3 / 4), maxMoleculesPerPlayer);
 
 	if (wantedType == -1 && getStorageMoleculesNum() < wantedMolecules)
 	{
