@@ -212,6 +212,11 @@ struct sSample
 	int health;
 	int cost[(int)eMol::count];
 
+	bool operator==(const sSample& right) const
+	{
+		return sampleId == right.sampleId;
+	}
+
 	bool hasAllMolecules(const sPlayer& player) const
 	{
 		for (int i = 0; i < (int)eMol::count; ++i)
@@ -248,6 +253,44 @@ struct sSample
 	{
 		return cost[0] >= 0;
 	}
+
+	int getProductionCost(const sPlayer& player) const
+	{
+		int productionCost = 0;
+		if (!isDiagnosed())
+			productionCost += 1;
+		if (carriedBy != 0)
+			productionCost += 2;
+
+		if (isDiagnosed())
+		{
+			for (int i = 0; i < (int)eMol::count; ++i)
+			{
+				productionCost += max(cost[i] - player.getMoleculeNum(i), 0);
+			}
+		}
+		else
+		{
+			int moleculesToGet = max(rankMaxMoleculeCosts[rank] + rankMinMoleculeCosts[rank] - player.getExpretiseMoleculesNum() - player.getStorageMoleculesNum(), 0);
+			productionCost += moleculesToGet;
+		}
+
+		return productionCost;
+	}
+
+	bool areAllMoleculesAvailable(const sPlayer& player, const sSupplies& supplies)
+	{
+		for (int i = 0; i < (int)eMol::count; ++i)
+		{
+			const int moleculeToGather = max(cost[i] - player.getMoleculeNum(i), 0);
+			if (moleculeToGather > supplies.available[i])
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
 };
 
 ostream& operator << (ostream& out, const sSample& sample);
@@ -259,9 +302,10 @@ struct sSamplesCollection
 {
 	vector<sSample> samples;
 
-	void sortByHealth(const sPlayer& player, const sProjectsCollection& projects);
+	void sortByHealthAndRoundsToProduce(const sPlayer& player, const sProjectsCollection& projects, sSupplies& supplies);
 	int getNumSamplesCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesCarriedBy(int carriedBy) const;
+	sSamplesCollection getSamplesNotCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesToAnalyze() const;
 	sSamplesCollection getDiagnosedSamples() const;
 };
@@ -347,7 +391,7 @@ int main()
 		cin >> collection; cin.ignore();
 
 
-		collection.sortByHealth(player, projects);
+		collection.sortByHealthAndRoundsToProduce(player, projects, supplies);
 
 #if LOG_MESSAGES
 		player.shouldLog = true;
@@ -424,9 +468,11 @@ istream& operator >> (istream& input, sSample& sample)
 }
 
 
-void sSamplesCollection::sortByHealth(const sPlayer& player, const sProjectsCollection& projects)
+void sSamplesCollection::sortByHealthAndRoundsToProduce(const sPlayer& player, const sProjectsCollection& projects, sSupplies& supplies)
 {
-	sort(samples.begin(), samples.end(), [&player, &projects](const sSample& first, const sSample& second)
+	const int timeToMove = getAreaMoveCost(eArea::diagnosis, eArea::molecules) + getAreaMoveCost(eArea::molecules, eArea::laboratory);
+
+	sort(samples.begin(), samples.end(), [&player, &projects, &supplies, timeToMove](const sSample& first, const sSample& second)
 	{
 		float firstHealth = first.isDiagnosed() ? (float)first.health : rankHealthPoints[first.rank];
 		float secondHealth = second.isDiagnosed() ? (float)second.health : rankHealthPoints[second.rank];
@@ -434,10 +480,13 @@ void sSamplesCollection::sortByHealth(const sPlayer& player, const sProjectsColl
 		firstHealth += projects.getHealtBonus(player, getMoleculeFromString(first.expertiseGain));
 		secondHealth += projects.getHealtBonus(player, getMoleculeFromString(second.expertiseGain));
 
-		if (firstHealth == secondHealth)
+		float firstGetFactor = firstHealth / (first.getProductionCost(player) + timeToMove + 1);
+		float secondGetFactor = secondHealth / (second.getProductionCost(player) + timeToMove + 1);
+
+		if (firstGetFactor == secondGetFactor)
 			return first.sampleId < second.sampleId;
 
-		return firstHealth > secondHealth;
+		return firstGetFactor > secondGetFactor;
 	});
 }
 
@@ -460,6 +509,20 @@ sSamplesCollection sSamplesCollection::getSamplesCarriedBy(int carriedBy) const
 	for (const auto& s : samples)
 	{
 		if (s.carriedBy == carriedBy)
+			outCollection.samples.push_back(s);
+	}
+
+	return outCollection;
+}
+
+sSamplesCollection sSamplesCollection::getSamplesNotCarriedBy(int carriedBy) const
+{
+	sSamplesCollection outCollection{};
+	outCollection.samples.reserve(samples.size());
+
+	for (const auto& s : samples)
+	{
+		if (s.carriedBy != carriedBy)
 			outCollection.samples.push_back(s);
 	}
 
@@ -808,8 +871,72 @@ bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesColl
 
 bool sLocalPlayer::updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
-	// TODO
-	setState(eState::gatherMolecules);
+	auto samplesForMe = collection.getSamplesNotCarriedBy(1).getDiagnosedSamples();
+	for (int i = 0; i < (int)samplesForMe.samples.size(); ++i)
+	{
+		if (!samplesForMe.samples[i].areAllMoleculesAvailable(*this, supplies))
+		{
+			samplesForMe.samples.erase(samplesForMe.samples.begin() + i--);
+		}
+	}
+	if (samplesForMe.samples.size() > maxSamplesPerPlayer)
+		samplesForMe.samples.resize(maxSamplesPerPlayer);
+
+	auto mySamples = collection.getSamplesCarriedBy(0);
+
+	if (shouldLog)
+	{
+		cerr << "Wanted:";
+		for (const auto& sample : samplesForMe.samples)
+		{
+			cerr << " " << sample.sampleId;
+		}
+		cerr << " Carried: ";
+		for (const auto& sample : mySamples.samples)
+		{
+			cerr << " " << sample.sampleId;
+		}
+		cerr << endl;
+	}
+
+	if (/*samplesForMe.samples != mySamples.samples && */getAreaFromString(target) == eArea::diagnosis)
+	{
+		// Check if there is wanted sample not owned by player.
+		for (const auto& sample : samplesForMe.samples)
+		{
+			if (sample.carriedBy != 0)
+			{
+				if (mySamples.samples.size() < maxSamplesPerPlayer)
+				{
+					// Get the sample
+					cmd::connectId(sample.sampleId, getMessage());
+					return true;
+				}
+				else
+				{
+					// Give back last owned.
+					cmd::connectId(mySamples.samples.back().sampleId, getMessage());
+					return true;
+				}
+			}
+		}
+
+		// Check is there is owned sample but not owned.
+		for (const auto& sample : mySamples.samples)
+		{
+			if (find(samplesForMe.samples.begin(), samplesForMe.samples.end(), sample) == samplesForMe.samples.end())
+			{
+				// Give back ownde sample.
+				cmd::connectId(sample.sampleId, getMessage());
+				return true;
+			}
+		}
+	}
+
+	if (mySamples.samples.empty())
+		setState(eState::collectSamples);
+	else
+		setState(eState::gatherMolecules);
 	return false;
 }
 
