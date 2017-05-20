@@ -6,7 +6,7 @@
 #include <cassert>
 #include <numeric>
 
-#define LOG_MESSAGES 0
+#define LOG_MESSAGES 1
 
 using namespace std;
 
@@ -914,9 +914,14 @@ bool sLocalPlayer::updateChooseSamples(const sPlayer& enemy, const sSamplesColle
 				}
 				else
 				{
-					// Give back last owned.
-					cmd::connectId(mySamples.samples.back().sampleId, getMessage());
-					return true;
+					for (int i = (int)mySamples.samples.size() - 1; i >= 0; --i)
+					{
+						if (find(samplesForMe.samples.begin(), samplesForMe.samples.end(), mySamples.samples[i]) == samplesForMe.samples.end())
+						{
+							cmd::connectId(mySamples.samples[i].sampleId, getMessage());
+							return true;
+						}
+					}
 				}
 			}
 		}
