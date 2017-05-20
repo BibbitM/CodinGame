@@ -6,6 +6,8 @@
 #include <cassert>
 #include <numeric>
 
+#define LOG_MESSAGES 0
+
 using namespace std;
 
 static const string targetStartPos = "START_POS";
@@ -17,6 +19,7 @@ static const string targetLaboratory = "LABORATORY";
 static const int maxSamplesPerPlayer = 3;
 static const int maxMoleculesPerPlayer = 10;
 static const int projectHealthPoints = 50;
+static const int maxRounds = 200;
 
 enum class eMol
 {
@@ -41,6 +44,7 @@ enum class eArea
 };
 
 string getAreaName(eArea area);
+eArea getAreaFromString(const string& target);
 int getAreaMoveCost(eArea start, eArea end);
 
 float rankHealthPoints[4] = { 0.0f, 2.125f, 18.62068966f, 40.f };
@@ -83,6 +87,7 @@ enum class eState
 	gatherMolecules,
 	returnSamples,
 	produceMedicines,
+	randomMove,
 };
 
 string toString(eState state)
@@ -96,6 +101,7 @@ string toString(eState state)
 	case eState::gatherMolecules:	return "Gather molecules";
 	case eState::returnSamples:		return "Return samples";
 	case eState::produceMedicines:	return "Produce medicines";
+	case eState::randomMove:		return "Random move";
 	default: return "";
 	}
 }
@@ -111,6 +117,7 @@ string toShortString(eState state)
 	case eState::gatherMolecules:	return "GM";
 	case eState::returnSamples:		return "RS";
 	case eState::produceMedicines:	return "PM";
+	case eState::randomMove:		return "RM";
 	default: return "";
 	}
 }
@@ -132,8 +139,11 @@ struct sLocalPlayer : sPlayer
 
 	string message;
 
-	sLocalPlayer() : state(eState::start), shouldLog(false) { }
+	int round;
 
+	sLocalPlayer() : state(eState::start), shouldLog(false), round(0) { }
+
+	bool cmdGoTo(eArea area, const sSamplesCollection& collection);
 	void update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 	bool updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 	bool updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
@@ -143,6 +153,9 @@ struct sLocalPlayer : sPlayer
 	bool updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 	bool updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 	bool updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+	bool updateRandomMove(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+
+	int getRoundsNeededToProduceMedicines(const sSamplesCollection& collection, bool withMove);
 
 	void setState(eState newState)
 	{
@@ -285,6 +298,7 @@ namespace cmd
 {
 	void send(const string& message = string()) {  if (!message.empty()) cout << " " << message; cout << endl; }
 	void goTo(const string& target, const string& message = string()) { cout << "GOTO " << target; send(message); }
+	void goTo(eArea area, const string& message = string()) { goTo(getAreaName(area), message); }
 	void goToDiagnosis(const string& message = string()) { goTo(targetDiagnosis, message); }
 	void goToMolecules(const string& message = string()) { goTo(targetMolecules, message); }
 	void goToLaboratory(const string& message = string()) { goTo(targetLaboratory, message); }
@@ -335,7 +349,7 @@ int main()
 
 		collection.sortByHealth(player, projects);
 
-		/*
+#if LOG_MESSAGES
 		player.shouldLog = true;
 
 		cerr << projects << endl;
@@ -349,92 +363,9 @@ int main()
 		cerr << enemy << endl;
 		cerr << supplies << endl;
 		cerr << collection << endl;
-		//*/
+#endif
 
-		bool update = true;
-		if (update)
-			player.update(enemy, collection, supplies, projects);
-		else
-		{
-			// Collect sample.
-			vector<sSample> samplesOfPlayer;
-			copy_if(collection.samples.begin(), collection.samples.end(), back_inserter(samplesOfPlayer), [](const sSample& sample) { return sample.carriedBy == 0; });
-
-			if (samplesOfPlayer.empty())
-			{
-				collection.samples.erase(remove_if(collection.samples.begin(), collection.samples.end(), [](const sSample& sample) { return sample.carriedBy != -1; }), collection.samples.end());
-				sort(collection.samples.begin(), collection.samples.end(), [&player](const sSample& first, const sSample& second)
-				{
-					return first.getCost(player) > second.getCost(player);
-				});
-
-				if (player.isInDiagnosis())
-				{
-					if (!collection.samples.empty())
-						cmd::connectId(collection.samples[0].sampleId);
-					else
-						cmd::goToSamples();
-				}
-				else if (player.isInSamples())
-				{
-					if (collection.samples.size() >= 3)
-						cmd::goToDiagnosis();
-					else
-					{
-						cmd::connectRank(2);
-					}
-				}
-				else
-				{
-					if (!collection.samples.empty())
-						cmd::goToDiagnosis();
-					else
-						cmd::goToSamples();
-				}
-			}
-			else
-			{
-				const auto& sampleToCollect = samplesOfPlayer[0];
-				if (!sampleToCollect.isDiagnosed())
-				{
-					if (player.isInDiagnosis())
-						cmd::connectId(sampleToCollect.sampleId);
-					else
-						cmd::goToDiagnosis();
-				}
-				else if (sampleToCollect.hasAllMolecules(player))
-				{
-					if (player.isInLaboratory())
-					{
-						cmd::connectId(sampleToCollect.sampleId);
-					}
-					else
-					{
-						cmd::goToLaboratory();
-					}
-				}
-				else if (player.isInMolecules())
-				{
-					bool collectedMolecule = false;
-					for (int i = 0; i < (int)eMol::count; ++i)
-					{
-						if (!sampleToCollect.hasMolecules(player, i) && supplies.isAvaiable(i))
-						{
-							cmd::connectType(i);
-							collectedMolecule = true;
-							break;
-						}
-					}
-
-					if (!collectedMolecule)
-						cmd::wait();
-				}
-				else
-				{
-					cmd::goToMolecules();
-				}
-			}
-		}
+		player.update(enemy, collection, supplies, projects);
 	}
 }
 
@@ -719,6 +650,22 @@ string getAreaName(eArea area)
 	}
 }
 
+eArea getAreaFromString(const string& target)
+{
+	if (target == targetStartPos)
+		return eArea::start;
+	if (target == targetSamples)
+		return eArea::samples;
+	if (target == targetDiagnosis)
+		return eArea::diagnosis;
+	if (target == targetMolecules)
+		return eArea::molecules;
+	if (target == targetLaboratory)
+		return eArea::laboratory;
+
+	return eArea::start;
+}
+
 int areasMoveCost[(int)eArea::count][(int)eArea::count] =
 {
 	{ 0, 2, 2, 2, 2 },
@@ -736,22 +683,55 @@ int getAreaMoveCost(eArea start, eArea end)
 }
 
 
+bool sLocalPlayer::cmdGoTo(eArea area, const sSamplesCollection& collection)
+{
+	const int roundToProduce = getRoundsNeededToProduceMedicines(collection, false);
+	if (roundToProduce > 0 && state != eState::produceMedicines)
+	{
+		int roundToProdceWithMove = roundToProduce + getAreaMoveCost(getAreaFromString(target), area) + getAreaMoveCost(area, eArea::laboratory);
+
+		if (round + roundToProdceWithMove > maxRounds)
+		{
+			addMessage("GoProd");
+			setState(eState::produceMedicines);
+			return false;
+		}
+	}
+
+	cmd::goTo(area, getMessage());
+	return true;
+}
+
 void sLocalPlayer::update(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
+	++round;
+
+	message.clear();
+
+	if (eta > 0)
+	{
+		cmd::null(getMessage());
+		return;
+	}
+
+	const int roundToProduce = getRoundsNeededToProduceMedicines(collection, true);
+	if (shouldLog)
+	{
+		cerr << "R: " << round << " RTP: " << roundToProduce << endl;
+	}
+
+	if (roundToProduce > 0 && state != eState::produceMedicines && round + roundToProduce > maxRounds)
+	{
+		addMessage("UpProd");
+		setState(eState::produceMedicines);
+	}
+
 	while (!updateState(enemy, collection, supplies, projects))
 		continue;
 }
 
 bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
-	message.clear();
-
-	if (eta > 0)
-	{
-		cmd::null(getMessage());
-		return true;
-	}
-
 	switch (state)
 	{
 	case eState::start:
@@ -768,6 +748,8 @@ bool sLocalPlayer::updateState(const sPlayer& enemy, const sSamplesCollection& c
 		return updateReturnSamples(enemy, collection, supplies, projects);
 	case eState::produceMedicines:
 		return updateProduceMedicines(enemy, collection, supplies, projects);
+	case eState::randomMove:
+		return updateRandomMove(enemy, collection, supplies, projects);
 	default:
 		cmd::wait("ERROR");
 		return true;
@@ -803,8 +785,7 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 		return true;
 	}
 
-	cmd::goToSamples(getMessage());
-	return true;
+	return cmdGoTo(eArea::samples, collection);
 }
 
 bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
@@ -822,8 +803,7 @@ bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesColl
 		return true;
 	}
 
-	cmd::goToDiagnosis(getMessage());
-	return true;
+	return cmdGoTo(eArea::diagnosis, collection);
 }
 
 bool sLocalPlayer::updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
@@ -939,8 +919,7 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 		return true;
 	}
 
-	cmd::goToMolecules(getMessage());
-	return true;
+	return cmdGoTo(eArea::molecules, collection);
 }
 
 bool sLocalPlayer::updateReturnSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
@@ -958,8 +937,7 @@ bool sLocalPlayer::updateReturnSamples(const sPlayer& enemy, const sSamplesColle
 		return true;
 	}
 
-	cmd::goToDiagnosis(getMessage());
-	return true;
+	return cmdGoTo(eArea::diagnosis, collection);
 }
 
 bool sLocalPlayer::updateProduceMedicines(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
@@ -1003,6 +981,53 @@ bool sLocalPlayer::updateProduceMedicines(const sPlayer& enemy, const sSamplesCo
 		return true;
 	}
 
-	cmd::goToLaboratory(getMessage());
-	return true;
+	return cmdGoTo(eArea::laboratory, collection);
+}
+
+bool sLocalPlayer::updateRandomMove(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
+{
+	const int numValidAreas = (int)eArea::count - (int)eArea::start - 1;
+	const eArea randomArea = (eArea)(rand() % numValidAreas + (int)eArea::start + 1);
+
+	return cmdGoTo(randomArea, collection);
+}
+
+int sLocalPlayer::getRoundsNeededToProduceMedicines(const sSamplesCollection& collection, bool withMove)
+{
+	auto myDiagnosedSamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples();
+
+	int gainedExpertise[(int)eMol::count] = {};
+	int readyProjects = 0;
+
+	for (const auto& sample : myDiagnosedSamples.samples)
+	{
+		bool missingSupplies = false;
+		for (int i = 0; i < (int)eMol::count; ++i)
+		{
+			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) + gainedExpertise[i]), 0);
+			if (moleculeToGather > 0)
+			{
+				missingSupplies = true;
+				break;
+			}
+		}
+
+		if (missingSupplies)
+			continue;
+
+		++readyProjects;
+
+		int extertiseInMolecule = getMoleculeFromString(sample.expertiseGain);
+		if (extertiseInMolecule >= 0 && extertiseInMolecule < (int)eMol::count)
+			++gainedExpertise[extertiseInMolecule];
+	}
+
+	if (readyProjects == 0)
+		return 0;
+
+	int roundsToReturnProjects = readyProjects;
+	if (withMove)
+		roundsToReturnProjects += getAreaMoveCost(getAreaFromString(target), eArea::laboratory);
+
+	return roundsToReturnProjects;
 }
