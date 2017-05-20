@@ -6,7 +6,7 @@
 #include <cassert>
 #include <numeric>
 
-#define LOG_MESSAGES 1
+#define LOG_MESSAGES 0
 
 using namespace std;
 
