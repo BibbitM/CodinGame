@@ -891,7 +891,7 @@ int sLocalPlayer::getCollectSampleRank(const sProjectsCollection &projects, cons
 	int sampleRank = 1;
 
 	const int projectsToDevelop = projects.getNotGainedProjectsNum(*this);
-	const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 1 - projectsToDevelop;
+	const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2 - projectsToDevelop;
 	if (totalExpertise >= rankMinMoleculeCosts[2])
 		sampleRank = 2;
 	if (totalExpertise >= (rankMinMoleculeCosts[3] + rankMaxMoleculeCosts[3]) / 2)
