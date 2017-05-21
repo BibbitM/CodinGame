@@ -152,6 +152,9 @@ struct sLocalPlayer : sPlayer
 	bool updateState(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 	bool updateStart(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 	bool updateCollectSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
+
+	int getCollectSampleRank(const sProjectsCollection &projects, const int mySamplesNum) const;
+
 	bool updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 	bool updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 	bool updateGatherMolecules(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
@@ -284,16 +287,22 @@ struct sSample
 		return productionCost;
 	}
 
-	bool areAllMoleculesAvailable(const sPlayer& player, const sSupplies& supplies)
+	bool areAllMoleculesAvailable(const sPlayer& player, const sSupplies& supplies) const
 	{
+		int totalMissingSupplies = 0;
+
 		for (int i = 0; i < (int)eMol::count; ++i)
 		{
 			const int moleculeToGather = max(cost[i] - player.getMoleculeNum(i), 0);
+			totalMissingSupplies += moleculeToGather;
 			if (moleculeToGather > supplies.available[i])
 			{
 				return false;
 			}
 		}
+
+		if (player.getStorageMoleculesNum() + totalMissingSupplies > maxMoleculesPerPlayer)
+			return false;
 
 		return true;
 	}
@@ -308,12 +317,13 @@ struct sSamplesCollection
 {
 	vector<sSample> samples;
 
-	void sortByHealthAndRoundsToProduce(const sPlayer& player, const sProjectsCollection& projects, sSupplies& supplies);
+	void sortByHealthAndRoundsToProduce(const sPlayer& player, const sProjectsCollection& projects, const sSupplies& supplies);
 	int getNumSamplesCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesNotCarriedBy(int carriedBy) const;
 	sSamplesCollection getSamplesToAnalyze() const;
 	sSamplesCollection getDiagnosedSamples() const;
+	sSamplesCollection getSamplesWithAvailableMoleculses(const sPlayer& player, const sSupplies& supplies) const;
 };
 
 ostream& operator << (ostream& out, const sSamplesCollection& collection);
@@ -474,7 +484,7 @@ istream& operator >> (istream& input, sSample& sample)
 }
 
 
-void sSamplesCollection::sortByHealthAndRoundsToProduce(const sPlayer& player, const sProjectsCollection& projects, sSupplies& supplies)
+void sSamplesCollection::sortByHealthAndRoundsToProduce(const sPlayer& player, const sProjectsCollection& projects, const sSupplies& supplies)
 {
 	const int timeToMove = getAreaMoveCost(eArea::diagnosis, eArea::molecules) + getAreaMoveCost(eArea::molecules, eArea::laboratory);
 
@@ -562,6 +572,21 @@ sSamplesCollection sSamplesCollection::getDiagnosedSamples() const
 
 	return outCollection;
 }
+
+sSamplesCollection sSamplesCollection::getSamplesWithAvailableMoleculses(const sPlayer& player, const sSupplies& supplies) const
+{
+	sSamplesCollection outCollection{};
+	outCollection.samples.reserve(samples.size());
+
+	for (const auto& s : samples)
+	{
+		if (s.areAllMoleculesAvailable(player, supplies))
+			outCollection.samples.push_back(s);
+	}
+
+	return outCollection;
+}
+
 
 ostream& operator << (ostream& out, const sSamplesCollection& collection)
 {
@@ -842,19 +867,36 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 
 	if (isInSamples())
 	{
-		int sampleRank = 1;
-		const int projectsToDevelop = projects.getNotGainedProjectsNum(*this);
-		const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 2 - projectsToDevelop;
-		if (totalExpertise >= rankMinMoleculeCosts[2])
-			sampleRank = 2;
-		if (totalExpertise >= rankMaxMoleculeCosts[3])
-			sampleRank = 3;
+		int sampleRank = getCollectSampleRank(projects, mySamplesNum);
 
 		cmd::connectRank(sampleRank, getMessage());
 		return true;
 	}
+	else
+	{
+		auto myDiagnosedSamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples().getSamplesWithAvailableMoleculses(*this, supplies);
+		if (myDiagnosedSamples.samples.size() > 1)
+		{
+			setState(eState::gatherMolecules);
+			return false;
+		}
+	}
 
 	return cmdGoTo(eArea::samples, collection);
+}
+
+int sLocalPlayer::getCollectSampleRank(const sProjectsCollection &projects, const int mySamplesNum) const
+{
+	int sampleRank = 1;
+
+	const int projectsToDevelop = projects.getNotGainedProjectsNum(*this);
+	const int totalExpertise = getExpretiseMoleculesNum() - mySamplesNum * 1 - projectsToDevelop;
+	if (totalExpertise >= rankMinMoleculeCosts[2])
+		sampleRank = 2;
+	if (totalExpertise >= (rankMinMoleculeCosts[3] + rankMaxMoleculeCosts[3]) / 2)
+		sampleRank = 3;
+
+	return sampleRank;
 }
 
 bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
@@ -877,14 +919,7 @@ bool sLocalPlayer::updateAnalyzeSamples(const sPlayer& enemy, const sSamplesColl
 
 bool sLocalPlayer::updateChooseSamples(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects)
 {
-	auto samplesForMe = collection.getSamplesNotCarriedBy(1).getDiagnosedSamples();
-	for (int i = 0; i < (int)samplesForMe.samples.size(); ++i)
-	{
-		if (!samplesForMe.samples[i].areAllMoleculesAvailable(*this, supplies))
-		{
-			samplesForMe.samples.erase(samplesForMe.samples.begin() + i--);
-		}
-	}
+	auto samplesForMe = collection.getSamplesNotCarriedBy(1).getDiagnosedSamples().getSamplesWithAvailableMoleculses(*this, supplies);
 	if (samplesForMe.samples.size() > maxSamplesPerPlayer)
 		samplesForMe.samples.resize(maxSamplesPerPlayer);
 
@@ -1219,6 +1254,17 @@ void sLocalPlayer::getMostWantedMoleculesIdx(const sPlayer& enemy, const sSample
 
 	for (int i = 0; i < (int)eMol::count; ++i)
 		moleculeIdx[i] = moleculesWithWeight[i].molecule;
+
+	if (shouldLog)
+	{
+		for (int i = 0; i < (int)eMol::count; ++i)
+		{
+			if (i != 0)
+				cerr << " ";
+			cerr << moleculeIdx[i];
+		}
+		cerr << endl;
+	}
 }
 
 int sPlayer::getMostWantedMoleculesWeight(const sSample& sample, const sSupplies& supplies, int molecule) const
