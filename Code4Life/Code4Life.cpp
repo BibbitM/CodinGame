@@ -875,7 +875,8 @@ bool sLocalPlayer::updateCollectSamples(const sPlayer& enemy, const sSamplesColl
 	else
 	{
 		auto myDiagnosedSamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples().getSamplesWithAvailableMoleculses(*this, supplies);
-		if (myDiagnosedSamples.samples.size() > 1)
+		if (myDiagnosedSamples.samples.size() > 1 ||
+			(myDiagnosedSamples.samples.size() > 0 && myDiagnosedSamples.samples[0].health + projects.getHealtBonus(*this, getMoleculeFromString(myDiagnosedSamples.samples[0].expertiseGain)) >= rankHealthPointsMin[3]))
 		{
 			setState(eState::gatherMolecules);
 			return false;
