@@ -17,6 +17,7 @@ static const string targetMolecules = "MOLECULES";
 static const string targetLaboratory = "LABORATORY";
 
 static const int maxSamplesPerPlayer = 3;
+static const int maxMoleculePerType = 5;
 static const int maxMoleculesPerPlayer = 10;
 static const int projectHealthPoints = 50;
 static const int maxRounds = 200;
@@ -53,6 +54,11 @@ int rankHealthPointsMax[4] = { 0, 10, 30, 50 };
 int rankMinMoleculeCosts[4] = { 0, 3, 5,  7 };
 int rankMaxMoleculeCosts[4] = { 0, 5, 8, 14 };
 
+struct sProjectsCollection;
+struct sSample;
+struct sSamplesCollection;
+struct sSupplies;
+
 struct sPlayer
 {
 	string target;
@@ -75,6 +81,8 @@ struct sPlayer
 	bool isInDiagnosis() const { return target == targetDiagnosis; }
 	bool isInMolecules() const { return target == targetMolecules; }
 	bool isInLaboratory() const { return target == targetLaboratory; }
+
+	int getMostWantedMoleculesWeight(const sSample& sample, const sSupplies& supplies, int molecule) const;
 };
 
 
@@ -128,10 +136,6 @@ ostream& operator << (ostream& out, eState state)
 	return out;
 }
 
-struct sProjectsCollection;
-struct sSamplesCollection;
-struct sSupplies;
-
 struct sLocalPlayer : sPlayer
 {
 	eState state;
@@ -156,6 +160,8 @@ struct sLocalPlayer : sPlayer
 	bool updateRandomMove(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects);
 
 	int getRoundsNeededToProduceMedicines(const sSamplesCollection& collection, bool withMove);
+
+	void getMostWantedMoleculesIdx(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects, int(&moleculeIdx)[(int)eMol::count]) const;
 
 	void setState(eState newState)
 	{
@@ -956,12 +962,19 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 	int gainedHealht = 0;
 
 
+	int moleculeIdx[(int)eMol::count] = {};
+	getMostWantedMoleculesIdx(enemy, collection, supplies, projects, moleculeIdx);
+
+
 	for (const auto& sample : myDiagnosedSamples.samples)
 	{
 		bool missingSupplies = false;
 		int totalMissingSupplies = 0;
-		for (int i = 0; i < (int)eMol::count; ++i)
+
+		for (int mol = 0; mol < (int)eMol::count; ++mol)
 		{
+			int i = moleculeIdx[mol];
+
 			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) - usedStorage[i] + gainedExpertise[i]), 0);
 			totalMissingSupplies += moleculeToGather;
 			if (moleculeToGather > supplies.available[i])
@@ -982,8 +995,10 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 			continue;
 		}
 
-		for (int i = 0; i < (int)eMol::count; ++i)
+		for (int mol = 0; mol < (int)eMol::count; ++mol)
 		{
+			int i = moleculeIdx[mol];
+
 			const int moleculeToGather = max(sample.cost[i] - (getMoleculeNum(i) - usedStorage[i] + gainedExpertise[i]), 0);
 			if (moleculeToGather > 0)
 			{
@@ -1028,8 +1043,10 @@ bool sLocalPlayer::updateGatherMolecules(const sPlayer& enemy, const sSamplesCol
 	if (wantedType == -1 && getStorageMoleculesNum() < wantedMolecules)
 	{
 		int startMolecule = rand() % (int)eMol::count;
-		for (int i = 0; i < (int)eMol::count; ++i)
+		for (int mol = 0; mol < (int)eMol::count; ++mol)
 		{
+			int i = moleculeIdx[mol];
+
 			int molecule = (startMolecule + i) % (int)eMol::count;
 			if (supplies.available[molecule] > 0)
 			{
@@ -1162,4 +1179,60 @@ int sLocalPlayer::getRoundsNeededToProduceMedicines(const sSamplesCollection& co
 		roundsToReturnProjects += getAreaMoveCost(getAreaFromString(target), eArea::laboratory);
 
 	return roundsToReturnProjects;
+}
+
+void sLocalPlayer::getMostWantedMoleculesIdx(const sPlayer& enemy, const sSamplesCollection& collection, const sSupplies& supplies, const sProjectsCollection& projects, int(&moleculeIdx)[(int)eMol::count]) const
+{
+	for (int i = 0; i < (int)eMol::count; ++i)
+		moleculeIdx[i] = i;
+
+	struct sMoleculeWithWeight
+	{
+		int molecule;
+		int weight;
+	} moleculesWithWeight[(int)eMol::count];
+
+	for (int i = 0; i < (int)eMol::count; ++i)
+	{
+		moleculesWithWeight[i].molecule = moleculeIdx[i];
+		moleculesWithWeight[i].weight = 0;
+	}
+
+
+	auto myDiagnosedSamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples();
+	auto enemyDiagnosedsamples = collection.getSamplesCarriedBy(0).getDiagnosedSamples();
+	for (int i = 0; i < (int)eMol::count; ++i)
+	{
+		for (const auto& sample : myDiagnosedSamples.samples)
+			moleculesWithWeight[i].weight += this->getMostWantedMoleculesWeight(sample, supplies, moleculesWithWeight[i].molecule);
+
+		for (const auto& sample : enemyDiagnosedsamples.samples)
+			moleculesWithWeight[i].weight += 100 * enemy.getMostWantedMoleculesWeight(sample, supplies, moleculesWithWeight[i].molecule);
+	}
+
+
+	sort(begin(moleculesWithWeight), end(moleculesWithWeight), [](const sMoleculeWithWeight& Left, const sMoleculeWithWeight& Right)
+	{
+		return Left.weight > Right.weight;
+	});
+
+
+	for (int i = 0; i < (int)eMol::count; ++i)
+		moleculeIdx[i] = moleculesWithWeight[i].molecule;
+}
+
+int sPlayer::getMostWantedMoleculesWeight(const sSample& sample, const sSupplies& supplies, int molecule) const
+{
+	const int cost = sample.cost[molecule];
+	const int have = this->getMoleculeNum(molecule);
+	const int supp = supplies.available[molecule];
+	const int need = cost - have;
+
+	if (need <= 0)
+		return 0;
+
+	if (need <= supp)
+		return need;
+
+	return (maxMoleculePerType + 1 - need) * 10;
 }
