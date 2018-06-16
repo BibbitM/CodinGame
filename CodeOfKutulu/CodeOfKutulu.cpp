@@ -6,6 +6,22 @@
 
 using namespace std;
 
+class Point
+{
+public:
+	Point() : m_x( 0 ), m_y( 0 ) {}
+	Point( int x, int y ) : m_x( x ), m_y( y ) {}
+
+	int GetX() const { return m_x; }
+	int GetY() const { return m_y; }
+
+	void Set( int x, int y ) { m_x = x; m_y = y; }
+
+private:
+	int m_x;
+	int m_y;
+};
+
 class Grid
 {
 public:
@@ -20,7 +36,7 @@ public:
 
 	void Load( istream& in );
 
-	Cell GetCell( int x, int y ) const { return m_cells[ GetIndex( x, y ) ]; }
+	Cell GetCell( const Point& point ) const { return m_cells[ GetIndex( point ) ]; }
 	int GetWidth() const { return m_width; }
 	int GetHeight() const { return m_height; }
 
@@ -28,15 +44,15 @@ private:
 	void LoadSize( istream& in );
 	void LoadLine( int lineIdx, istream& in );
 
-	int GetIndex( int x, int y ) const
+	int GetIndex( const Point& point ) const
 	{
-		assert( x >= 0 && x < m_width );
-		assert( y >= 0 && y < m_height );
-		return x + y * m_height;
+		assert( point.GetX() >= 0 && point.GetX() < m_width );
+		assert( point.GetY() >= 0 && point.GetY() < m_height );
+		return point.GetX() + point.GetY() * m_height;
 	}
-	void SetCell( int x, int y, Cell cell )
+	void SetCell( const Point& point, Cell cell )
 	{
-		m_cells[ GetIndex( x, y ) ] = cell;
+		m_cells[ GetIndex( point ) ] = cell;
 	}
 
 	int m_width;
@@ -117,13 +133,13 @@ void Grid::LoadLine( int lineIdx, istream& in )
 		switch ( line[ i ] )
 		{
 		case '#':
-			SetCell( i, lineIdx, Cell::Wall );
+			SetCell( Point( i, lineIdx ), Cell::Wall );
 			break;
 		case 'w':
-			SetCell( i, lineIdx, Cell::Spawn );
+			SetCell( Point( i, lineIdx ), Cell::Spawn );
 			break;
 		case '.':
-			SetCell( i, lineIdx, Cell::Empty );
+			SetCell( Point( i, lineIdx ), Cell::Empty );
 			break;
 		default:
 			assert( false );
@@ -137,7 +153,7 @@ ostream& operator << ( ostream& out, const Grid& grid )
 	{
 		for ( int y = 0; y < grid.GetHeight(); ++y )
 		{
-			switch ( grid.GetCell( x, y ) )
+			switch ( grid.GetCell( Point( x, y ) ) )
 			{
 			case Grid::Cell::Wall:
 				out << '#';
