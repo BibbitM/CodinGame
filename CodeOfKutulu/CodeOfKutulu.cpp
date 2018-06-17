@@ -7,6 +7,12 @@
 
 using namespace std;
 
+template< typename T, std::size_t N >
+constexpr std::size_t countof( T const ( & )[ N ] ) noexcept
+{
+	return N;
+}
+
 class Point
 {
 public:
@@ -423,6 +429,9 @@ public:
 
 	const Point& GetPosition() const { return m_position; }
 
+	int GetCost() const { return m_cost; }
+	void AddCost( int cost ) { m_cost += cost; }
+
 	bool operator < ( const Move& other ) { return m_cost < other.m_cost; }
 
 private:
@@ -435,7 +444,9 @@ void Player::Update( const Grid& grid, const vector< Explorer >& explorers, cons
 	static const Point directions[ 5 ] = { Point( 0, 0 ), Point(1, 0), Point(0, 1), Point(-1, 0), Point(0, -1) };
 
 	vector< Move > moves;
+	moves.reserve( countof( directions ) );
 
+	// Gather posible moves.
 	for ( const Point& d : directions )
 	{
 		if ( grid.CanMove( GetPosition() + d ) )
@@ -444,6 +455,27 @@ void Player::Update( const Grid& grid, const vector< Explorer >& explorers, cons
 		}
 	}
 	assert( !moves.empty() );
+
+
+	static const int WANDERER_DIST0_COST = 1000000;
+	static const int WANDERER_DIST1_COST = WANDERER_DIST0_COST * 2;
+
+	// Try to avoid wanderers.
+	for ( const Wanderer& w : wanderers )
+	{
+		if ( w.GetState() == Wanderer::State::Spawning && w.GetTimeBefore() > 1 )
+			continue;
+
+		for ( Move& m : moves )
+		{
+			int dist = Distance( m.GetPosition(), w.GetPosition() );
+			if ( dist == 0 )
+				m.AddCost( WANDERER_DIST0_COST );
+			else if ( dist == 1 )
+				m.AddCost( WANDERER_DIST1_COST );
+		}
+	}
+
 
 	random_shuffle( moves.begin(), moves.end() );
 	sort( moves.begin(), moves.end() );
