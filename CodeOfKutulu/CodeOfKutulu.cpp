@@ -548,13 +548,15 @@ void Player::Update( const Grid& grid, const vector< Explorer >& explorers, cons
 
 
 	static const int WANDERER_DIST0_COST = 1000000;
-	static const int WANDERER_DIST1_COST = WANDERER_DIST0_COST * 3 / 2;
+	static const int WANDERER_DIST1_COST = WANDERER_DIST0_COST * 2 / 3;
 
 	// Try to avoid wanderers.
 	for ( const Wanderer& w : wanderers )
 	{
-		if ( w.GetState() == Wanderer::State::Spawning && w.GetTimeBefore() > 1 )
+		if ( ( w.GetState() == Wanderer::State::Spawning || w.GetState() == Wanderer::State::Stunned ) && w.GetTimeBefore() > 1 )
+		{
 			continue;
+		}
 
 		for ( Move& m : moves )
 		{
