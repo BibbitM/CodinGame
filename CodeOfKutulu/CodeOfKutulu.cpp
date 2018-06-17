@@ -75,6 +75,18 @@ private:
 
 ostream& operator << ( ostream& out, const Explorer& explorer );
 
+class Player : public Explorer
+{
+public:
+	Player() : Explorer(), m_targetPosition( 0, 0 ) {}
+
+	const Point& GetTargetPosition() const { return m_targetPosition; }
+	void SetTargetPosition( const Point& targetPosition ) { m_targetPosition = targetPosition; }
+
+private:
+	Point m_targetPosition;
+};
+
 class Wanderer : public Entity
 {
 public:
@@ -162,7 +174,7 @@ int main()
     int wandererLifeTime; // how many turns the wanderer is on map after spawning, always 40 until wood 1
     cin >> sanityLossLonely >> sanityLossGroup >> wandererSpawnTime >> wandererLifeTime; cin.ignore();
 
-	Explorer player;
+	Player player;
 
 	vector< Explorer > explorers;
 	vector< Wanderer > wanderers;
@@ -211,7 +223,7 @@ int main()
         // Write an action using cout. DON'T FORGET THE "<< endl"
         // To debug: cerr << "Debug messages..." << endl;
 
-        cout << "MOVE 1 1" << endl; // MOVE <x> <y> | WAIT
+        cout << "MOVE " << player.GetTargetPosition() << endl; // MOVE <x> <y> | WAIT
     }
 }
 
