@@ -66,6 +66,8 @@ public:
 	{
 		Explorer,
 		Wanderer,
+		EffectPlan,
+		EffectLight,
 	};
 
 	Entity() : m_position(), m_id( -1 ), m_type( Type::Explorer ) {}
@@ -88,6 +90,8 @@ private:
 	int m_id;
 	Type m_type;
 };
+
+const char* ToString( Entity::Type type );
 
 ostream& operator << ( ostream& out, const Entity& entity );
 
@@ -258,7 +262,7 @@ int main()
 
 				cerr << explorers.back() << endl;
 			}
-			else
+			else if ( entity.GetType() == Entity::Type::Wanderer )
 			{
 				wanderers.push_back( entity );
 				wanderers.back().LoadParams( cin );
@@ -302,13 +306,35 @@ void Entity::Load( istream& in )
 		m_type = Type::Wanderer;
 	else if ( entityType == "EXPLORER" )
 		m_type = Type::Explorer;
+	else if ( entityType == "EFFECT_PLAN" )
+		m_type = Type::EffectPlan;
+	else if ( entityType == "EFFECT_LIGHT" )
+		m_type = Type::EffectLight;
 	else
 		assert( false && "Unknown entity type!" );
 }
 
+const char* ToString( Entity::Type type )
+{
+	switch ( type )
+	{
+	case Entity::Type::Wanderer:
+		return "WANDERER";
+	case Entity::Type::Explorer:
+		return "EXPLORER";
+	case Entity::Type::EffectPlan:
+		return "EFFECT_PLAN";
+	case Entity::Type::EffectLight:
+		return "EFFECT_LIGHT";
+	default:
+		assert( false && "Unknown entity type!" );
+		return "UNKNOWN";
+	}
+}
+
 ostream& operator << ( ostream& out, const Entity& entity )
 {
-	out << ( entity.GetType() == Entity::Type::Explorer ? "EXPLORER" : "WANDERER" )
+	out << ToString( entity.GetType() )
 		<< ' '
 		<< entity.GetId()
 		<< ' '
