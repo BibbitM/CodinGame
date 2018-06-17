@@ -22,6 +22,89 @@ private:
 	int m_y;
 };
 
+istream& operator >> ( istream& in, Point& point );
+ostream& operator << ( ostream& out, const Point& point ); 
+
+class Entity
+{
+public:
+	enum class Type
+	{
+		Explorer,
+		Wanderer,
+	};
+
+	Entity() : m_position(), m_id( -1 ), m_type( Type::Explorer ) {}
+	Entity( Type type, int id, const Point& position ) : m_type( type ), m_position( position ), m_id( id ) {}
+
+	void SetEntity( const Entity& entity ) { *this = entity; }
+	void Load( istream& in );
+
+	Type GetType() const { return m_type; }
+	void SetType( Type type ) { m_type = type; }
+
+	int GetId() const { return m_id; }
+	void SetId( int id ) { m_id = id; }
+
+	const Point& GetPosition() const { return m_position; }
+	void SetPosition( const Point& position ) { m_position = position; }
+
+private:
+	Point m_position;
+	int m_id;
+	Type m_type;
+};
+
+ostream& operator << ( ostream& out, const Entity& entity );
+
+class Explorer : public Entity
+{
+public:
+	Explorer() : Entity(), m_sanity( 0 ) {}
+	Explorer( const Entity& entity ) : Entity( entity ), m_sanity( 0 ) {}
+
+	void LoadParams( istream& in );
+
+	int GetSanity() const { return m_sanity; }
+	void SetSanity( int sanity ) { m_sanity = sanity; }
+
+private:
+	int m_sanity;
+
+};
+
+ostream& operator << ( ostream& out, const Explorer& explorer );
+
+class Wanderer : public Entity
+{
+public:
+	enum class State
+	{
+		Spawning,
+		Wandering,
+	};
+	Wanderer() : Entity(), m_timeBefore( 0 ), m_state( State::Spawning ), m_target( -1 ) {}
+	Wanderer( const Entity& entity ) : Entity( entity ), m_timeBefore( 0 ), m_state( State::Spawning ), m_target( -1 ) {}
+
+	void LoadParams( istream& in );
+
+	int GetTimeBefore() const { return m_timeBefore; }
+	void SetTimeBefore( int timeBefore ) { m_timeBefore = timeBefore; }
+
+	State GetState() const { return m_state; }
+	void SetState( State state ) { m_state = state; }
+
+	int GetTarget() const { return m_target; }
+	void SetTarget( int target ) { m_target = target; }
+
+private:
+	int m_timeBefore;
+	State m_state;
+	int m_target;
+};
+
+ostream& operator << ( ostream& out, const Wanderer& wanderer );
+
 class Grid
 {
 public:
@@ -79,26 +162,155 @@ int main()
     int wandererLifeTime; // how many turns the wanderer is on map after spawning, always 40 until wood 1
     cin >> sanityLossLonely >> sanityLossGroup >> wandererSpawnTime >> wandererLifeTime; cin.ignore();
 
-    // game loop
-    while (1) {
-        int entityCount; // the first given entity corresponds to your explorer
-        cin >> entityCount; cin.ignore();
-        for (int i = 0; i < entityCount; i++) {
-            string entityType;
-            int id;
-            int x;
-            int y;
-            int param0;
-            int param1;
-            int param2;
-            cin >> entityType >> id >> x >> y >> param0 >> param1 >> param2; cin.ignore();
-        }
+	Explorer player;
+
+	vector< Explorer > explorers;
+	vector< Wanderer > wanderers;
+
+	// game loop
+	while (1)
+	{
+		int entityCount; // the first given entity corresponds to your explorer
+		cin >> entityCount; cin.ignore();
+
+		assert( entityCount >= 1 );
+
+		explorers.clear();
+		explorers.reserve( entityCount - 1 );
+
+		wanderers.clear();
+		wanderers.reserve( entityCount - 1 );
+
+		// load player
+		player.Load( cin );
+		player.LoadParams( cin );
+
+		cerr << player << endl;
+
+		for ( int i = 1; i < entityCount; ++i )
+		{
+			Entity entity;
+			entity.Load( cin );
+
+			if ( entity.GetType() == Entity::Type::Explorer )
+			{
+				explorers.push_back( entity );
+				explorers.back().LoadParams( cin );
+
+				cerr << explorers.back() << endl;
+			}
+			else
+			{
+				wanderers.push_back( entity );
+				wanderers.back().LoadParams( cin );
+
+				cerr << wanderers.back() << endl;
+			}
+		}
 
         // Write an action using cout. DON'T FORGET THE "<< endl"
         // To debug: cerr << "Debug messages..." << endl;
 
         cout << "MOVE 1 1" << endl; // MOVE <x> <y> | WAIT
     }
+}
+
+
+istream& operator >> ( istream& in, Point& point )
+{
+	int x, y;
+	in >> x >> y;
+
+	point.Set( x, y );
+
+	return in;
+}
+
+ostream& operator << ( ostream& out, const Point& point )
+{
+	return out << point.GetX() << ' ' << point.GetY();
+}
+
+
+void Entity::Load( istream& in )
+{
+	string entityType;
+	cin >> entityType >> m_id >> m_position;
+
+	if ( entityType == "WANDERER" )
+		m_type = Type::Wanderer;
+	else if ( entityType == "EXPLORER" )
+		m_type = Type::Explorer;
+	else
+		assert( false && "Unknown entity type!" );
+}
+
+ostream& operator << ( ostream& out, const Entity& entity )
+{
+	out << ( entity.GetType() == Entity::Type::Explorer ? "EXPLORER" : "WANDERER" )
+		<< ' '
+		<< entity.GetId()
+		<< ' '
+		<< entity.GetPosition();
+
+	return out;
+}
+
+void Explorer::LoadParams( istream& in )
+{
+	int param0;
+	int param1;
+	int param2;
+	in >> param0 >> param1 >> param2; cin.ignore();
+
+	SetSanity( param0 );
+}
+
+ostream& operator << ( ostream& out, const Explorer& explorer )
+{
+	out << ( Entity& ) explorer
+		<< ' '
+		<< explorer.GetSanity();
+
+	return out << endl;
+}
+
+void Wanderer::LoadParams( istream& in )
+{
+	int param0;
+	int param1;
+	int param2;
+	in >> param0 >> param1 >> param2; cin.ignore();
+
+	SetTimeBefore( param0 );
+
+	switch ( param1 )
+	{
+	case ( int )State::Spawning:
+		SetState( State::Spawning );
+		break;
+	case (int)State::Wandering:
+		SetState( State::Wandering );
+		break;
+	default:
+		assert( false );
+		break;
+	}
+
+	SetTarget( param2 );
+}
+
+ostream& operator << ( ostream& out, const Wanderer& wanderer )
+{
+	out << ( Entity& ) wanderer
+		<< ' '
+		<< wanderer.GetTimeBefore()
+		<< ' '
+		<< ( wanderer.GetState() == Wanderer::State::Spawning ? "SPAWNING" : "WANDERING" ) 
+		<< ' '
+		<< wanderer.GetTarget();
+
+	return out << endl;
 }
 
 Grid::Grid()
@@ -143,6 +355,7 @@ void Grid::LoadLine( int lineIdx, istream& in )
 			break;
 		default:
 			assert( false );
+			break;
 		}
 	}
 }
