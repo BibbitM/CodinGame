@@ -68,6 +68,9 @@ public:
 		Wanderer,
 		EffectPlan,
 		EffectLight,
+		Slasher,
+		EffectShelter,
+		EffectYell,
 	};
 
 	Entity() : m_position(), m_id( -1 ), m_type( Type::Explorer ) {}
@@ -120,6 +123,9 @@ public:
 	{
 		Spawning,
 		Wandering,
+		Stalking,
+		Rushing,
+		Stunned,
 	};
 	Wanderer() : Entity(), m_timeBefore( 0 ), m_state( State::Spawning ), m_target( -1 ) {}
 	Wanderer( const Entity& entity ) : Entity( entity ), m_timeBefore( 0 ), m_state( State::Spawning ), m_target( -1 ) {}
@@ -140,6 +146,8 @@ private:
 	State m_state;
 	int m_target;
 };
+
+const char* ToString( Wanderer::State state );
 
 ostream& operator << ( ostream& out, const Wanderer& wanderer );
 
@@ -166,6 +174,7 @@ public:
 	{
 		Wall,
 		Spawn,
+		Shelter,
 		Empty,
 	};
 
@@ -262,12 +271,20 @@ int main()
 
 				cerr << explorers.back() << endl;
 			}
-			else if ( entity.GetType() == Entity::Type::Wanderer )
+			else if ( entity.GetType() == Entity::Type::Wanderer
+				|| entity.GetType() == Entity::Type::Slasher )
 			{
 				wanderers.push_back( entity );
 				wanderers.back().LoadParams( cin );
 
 				cerr << wanderers.back() << endl;
+			}
+			else
+			{
+				int param0;
+				int param1;
+				int param2;
+				cin >> param0 >> param1 >> param2; cin.ignore();
 			}
 		}
 
@@ -300,7 +317,7 @@ ostream& operator << ( ostream& out, const Point& point )
 void Entity::Load( istream& in )
 {
 	string entityType;
-	cin >> entityType >> m_id >> m_position;
+	in >> entityType >> m_id >> m_position;
 
 	if ( entityType == "WANDERER" )
 		m_type = Type::Wanderer;
@@ -310,8 +327,17 @@ void Entity::Load( istream& in )
 		m_type = Type::EffectPlan;
 	else if ( entityType == "EFFECT_LIGHT" )
 		m_type = Type::EffectLight;
+	else if ( entityType == "SLASHER" )
+		m_type = Type::Slasher;
+	else if ( entityType == "EFFECT_SHELTER" )
+		m_type = Type::EffectShelter;
+	else if ( entityType == "EFFECT_YELL" )
+		m_type = Type::EffectYell;
 	else
+	{
+		cerr << "Unknown entity type: " << entityType << endl;
 		assert( false && "Unknown entity type!" );
+	}
 }
 
 const char* ToString( Entity::Type type )
@@ -326,6 +352,12 @@ const char* ToString( Entity::Type type )
 		return "EFFECT_PLAN";
 	case Entity::Type::EffectLight:
 		return "EFFECT_LIGHT";
+	case Entity::Type::Slasher:
+		return "SLASHER";
+	case Entity::Type::EffectShelter:
+		return "EFFECT_SHELTER";
+	case Entity::Type::EffectYell:
+		return "EFFECT_YELL";
 	default:
 		assert( false && "Unknown entity type!" );
 		return "UNKNOWN";
@@ -348,7 +380,7 @@ void Explorer::LoadParams( istream& in )
 	int param0;
 	int param1;
 	int param2;
-	in >> param0 >> param1 >> param2; cin.ignore();
+	in >> param0 >> param1 >> param2; in.ignore();
 
 	SetSanity( param0 );
 }
@@ -367,7 +399,7 @@ void Wanderer::LoadParams( istream& in )
 	int param0;
 	int param1;
 	int param2;
-	in >> param0 >> param1 >> param2; cin.ignore();
+	in >> param0 >> param1 >> param2; in.ignore();
 
 	SetTimeBefore( param0 );
 
@@ -379,12 +411,41 @@ void Wanderer::LoadParams( istream& in )
 	case (int)State::Wandering:
 		SetState( State::Wandering );
 		break;
+	case ( int ) State::Stalking:
+		SetState( State::Stalking );
+		break;
+	case ( int ) State::Rushing:
+		SetState( State::Rushing );
+		break;
+	case ( int ) State::Stunned:
+		SetState( State::Stunned );
+		break;
 	default:
-		assert( false );
+		assert( false && "Unknown wanderer state!" );
 		break;
 	}
 
 	SetTarget( param2 );
+}
+
+const char* ToString( Wanderer::State state )
+{
+	switch ( state )
+	{
+	case Wanderer::State::Spawning:
+		return "SPAWNING";
+	case Wanderer::State::Wandering:
+		return "WANDERING";
+	case Wanderer::State::Stalking:
+		return "STALKING";
+	case Wanderer::State::Rushing:
+		return "RUSHING";
+	case Wanderer::State::Stunned:
+		return "STUNNED";
+	default:
+		assert( false && "Unknown wanderer state!" );
+		return "UNKNOWN";
+	}
 }
 
 ostream& operator << ( ostream& out, const Wanderer& wanderer )
@@ -393,7 +454,7 @@ ostream& operator << ( ostream& out, const Wanderer& wanderer )
 		<< ' '
 		<< wanderer.GetTimeBefore()
 		<< ' '
-		<< ( wanderer.GetState() == Wanderer::State::Spawning ? "SPAWNING" : "WANDERING" ) 
+		<< ToString( wanderer.GetState() ) 
 		<< ' '
 		<< wanderer.GetTarget();
 
@@ -436,6 +497,9 @@ void Grid::LoadLine( int lineIdx, istream& in )
 			break;
 		case 'w':
 			SetCell( Point( i, lineIdx ), Cell::Spawn );
+			break;
+		case 'U':
+			SetCell( Point( i, lineIdx ), Cell::Shelter );
 			break;
 		case '.':
 			SetCell( Point( i, lineIdx ), Cell::Empty );
@@ -484,7 +548,7 @@ void Player::Update( const Grid& grid, const vector< Explorer >& explorers, cons
 
 
 	static const int WANDERER_DIST0_COST = 1000000;
-	static const int WANDERER_DIST1_COST = WANDERER_DIST0_COST * 2;
+	static const int WANDERER_DIST1_COST = WANDERER_DIST0_COST / 2;
 
 	// Try to avoid wanderers.
 	for ( const Wanderer& w : wanderers )
@@ -547,6 +611,9 @@ ostream& operator << ( ostream& out, const Grid& grid )
 				break;
 			case Grid::Cell::Spawn:
 				out << 'w';
+				break;
+			case Grid::Cell::Shelter:
+				out << 'U';
 				break;
 			case Grid::Cell::Empty:
 				out << '.';
