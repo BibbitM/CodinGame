@@ -567,7 +567,8 @@ void Player::Update( const Grid& grid, const vector< Explorer >& explorers, cons
 	}
 
 
-	static const int EXPLORER_DIST01_COST = 0;
+	static const int EXPLORER_DIST0_COST = 1;
+	static const int EXPLORER_DIST1_COST = 0;
 	static const int EXPLORER_DIST2_COST = 100;
 	static const int EXPLORER_NOTCOSE_ENOUGH = 1000;
 
@@ -581,8 +582,10 @@ void Player::Update( const Grid& grid, const vector< Explorer >& explorers, cons
 		for ( Move& m : moves )
 		{
 			int dist = Distance( m.GetPosition(), e.GetPosition() );
-			if ( dist <= 1 )
-				m.AddCost( EXPLORER_DIST01_COST );
+			if ( dist == 0 )
+				m.AddCost( EXPLORER_DIST0_COST );
+			else if ( dist == 1 )
+				m.AddCost( EXPLORER_DIST1_COST );
 			else if ( dist == 2 )
 				m.AddCost( EXPLORER_DIST2_COST );
 			else
