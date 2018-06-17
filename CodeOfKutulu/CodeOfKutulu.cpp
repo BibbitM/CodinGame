@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 
 using namespace std;
 
@@ -17,10 +18,37 @@ public:
 
 	void Set( int x, int y ) { m_x = x; m_y = y; }
 
+	Point& operator += ( const Point& other )
+	{
+		m_x += other.m_x;
+		m_y += other.m_y;
+	}
+	Point& operator -= ( const Point& other )
+	{
+		m_x -= other.m_x;
+		m_y -= other.m_y;
+	}
+
 private:
 	int m_x;
 	int m_y;
 };
+
+// Calculates Manhattan distances between two points.
+inline int Distance( const Point& p1, const Point& p2 )
+{
+	return abs( p1.GetX() - p2.GetX() ) + abs( p1.GetY() - p2.GetY() );
+}
+
+inline Point operator + ( const Point& p1, const Point& p2 )
+{
+	return Point( p1.GetX() + p2.GetX(), p1.GetY() + p2.GetY() );
+}
+
+inline Point operator - ( const Point& p1, const Point& p2 )
+{
+	return Point( p1.GetX() - p2.GetX(), p1.GetY() - p2.GetY() );
+}
 
 istream& operator >> ( istream& in, Point& point );
 ostream& operator << ( ostream& out, const Point& point ); 
@@ -75,18 +103,6 @@ private:
 
 ostream& operator << ( ostream& out, const Explorer& explorer );
 
-class Player : public Explorer
-{
-public:
-	Player() : Explorer(), m_targetPosition( 0, 0 ) {}
-
-	const Point& GetTargetPosition() const { return m_targetPosition; }
-	void SetTargetPosition( const Point& targetPosition ) { m_targetPosition = targetPosition; }
-
-private:
-	Point m_targetPosition;
-};
-
 class Wanderer : public Entity
 {
 public:
@@ -117,6 +133,22 @@ private:
 
 ostream& operator << ( ostream& out, const Wanderer& wanderer );
 
+class Grid;
+
+class Player : public Explorer
+{
+public:
+	Player() : Explorer(), m_targetPosition( 0, 0 ) {}
+
+	const Point& GetTargetPosition() const { return m_targetPosition; }
+	void SetTargetPosition( const Point& targetPosition ) { m_targetPosition = targetPosition; }
+
+	void Update( const Grid& grid, const vector< Explorer >& explorers, const vector< Wanderer >& wanderers );
+
+private:
+	Point m_targetPosition;
+};
+
 class Grid
 {
 public:
@@ -135,14 +167,23 @@ public:
 	int GetWidth() const { return m_width; }
 	int GetHeight() const { return m_height; }
 
+	bool CanMove( const Point& point ) const
+	{
+		return IsValid( point ) && GetCell( point ) != Cell::Wall;
+	}
+
 private:
 	void LoadSize( istream& in );
 	void LoadLine( int lineIdx, istream& in );
 
+	bool IsValid( const Point& point ) const
+	{
+		return point.GetX() >= 0 && point.GetX() < m_width
+			&& point.GetY() >= 0 && point.GetY() < m_height;
+	}
 	int GetIndex( const Point& point ) const
 	{
-		assert( point.GetX() >= 0 && point.GetX() < m_width );
-		assert( point.GetY() >= 0 && point.GetY() < m_height );
+		assert( IsValid( point ) );
 		return point.GetX() + point.GetY() * m_height;
 	}
 	void SetCell( const Point& point, Cell cell )
@@ -219,6 +260,8 @@ int main()
 				cerr << wanderers.back() << endl;
 			}
 		}
+
+		player.Update( grid, explorers, wanderers );
 
         // Write an action using cout. DON'T FORGET THE "<< endl"
         // To debug: cerr << "Debug messages..." << endl;
@@ -371,6 +414,43 @@ void Grid::LoadLine( int lineIdx, istream& in )
 		}
 	}
 }
+
+class Move
+{
+public:
+	Move() : m_position(), m_cost( 0 ) {}
+	Move( const Point& position ) : m_position( position ), m_cost( 0 ) {}
+
+	const Point& GetPosition() const { return m_position; }
+
+	bool operator < ( const Move& other ) { return m_cost < other.m_cost; }
+
+private:
+	Point m_position;
+	int m_cost;
+};
+
+void Player::Update( const Grid& grid, const vector< Explorer >& explorers, const vector< Wanderer >& wanderers )
+{
+	static const Point directions[ 5 ] = { Point( 0, 0 ), Point(1, 0), Point(0, 1), Point(-1, 0), Point(0, -1) };
+
+	vector< Move > moves;
+
+	for ( const Point& d : directions )
+	{
+		if ( grid.CanMove( GetPosition() + d ) )
+		{
+			moves.push_back( Move( GetPosition() + d ) );
+		}
+	}
+	assert( !moves.empty() );
+
+	random_shuffle( moves.begin(), moves.end() );
+	sort( moves.begin(), moves.end() );
+
+	m_targetPosition = moves.front().GetPosition();
+}
+
 
 ostream& operator << ( ostream& out, const Grid& grid )
 {
