@@ -503,6 +503,30 @@ void Player::Update( const Grid& grid, const vector< Explorer >& explorers, cons
 	}
 
 
+	static const int EXPLORER_DIST01_COST = 0;
+	static const int EXPLORER_DIST2_COST = 100;
+	static const int EXPLORER_NOTCOSE_ENOUGH = 1000;
+
+
+	// Try to stay close other explorers.
+	for ( const Explorer& e : explorers )
+	{
+		if ( e.GetSanity() <= 0 )
+			continue;
+
+		for ( Move& m : moves )
+		{
+			int dist = Distance( m.GetPosition(), e.GetPosition() );
+			if ( dist <= 1 )
+				m.AddCost( EXPLORER_DIST01_COST );
+			else if ( dist == 2 )
+				m.AddCost( EXPLORER_DIST2_COST );
+			else
+				m.AddCost( EXPLORER_NOTCOSE_ENOUGH );
+		}
+	}
+
+
 	random_shuffle( moves.begin(), moves.end() );
 	sort( moves.begin(), moves.end() );
 
