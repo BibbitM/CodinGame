@@ -548,7 +548,7 @@ void Player::Update( const Grid& grid, const vector< Explorer >& explorers, cons
 
 
 	static const int WANDERER_DIST0_COST = 1000000;
-	static const int WANDERER_DIST1_COST = WANDERER_DIST0_COST / 2;
+	static const int WANDERER_DIST1_COST = WANDERER_DIST0_COST * 3 / 2;
 
 	// Try to avoid wanderers.
 	for ( const Wanderer& w : wanderers )
